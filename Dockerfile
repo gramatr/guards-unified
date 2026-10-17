@@ -1,13 +1,42 @@
-# guards-unified/Dockerfile — one image, one process, combining
-# secret-guard (gitleaks), pii-guard (Presidio), and injection-guard
-# (Llama Prompt Guard 2) behind a single FastAPI app (app/main.py).
+# guards-unified/Dockerfile — GPU-capable default. Same app code as
+# Dockerfile.cpu, but installs the default torch wheel (bundles the
+# full NVIDIA CUDA runtime) instead of the CPU-only index, so
+# injection-guard's model can opt into a real GPU via
+# INJECTION_GUARD_DEVICE=auto (default — see app/injection_guard/config.py)
+# wherever one is actually visible to torch. Falls back to CPU
+# automatically when no GPU is present, same "auto" logic as standalone
+# injection-guard. Use Dockerfile.cpu instead on a host with no GPU and
+# no plan to ever add one (smaller image, no CUDA packages).
+#
+# Multi-arch (linux/amd64, linux/arm64) — DO NOT cross-build this one
+# under QEMU emulation (`docker buildx build --platform amd64,arm64`
+# in one invocation): a CUDA-bundled torch install under emulation is
+# extremely slow and was abandoned after running far longer than the
+# equivalent native build on real hardware. Build each architecture
+# NATIVELY on its own real hardware instead, then combine:
+#   # on an amd64 host with an NVIDIA GPU:
+#   docker build -t ghcr.io/gramatr/guards-unified:gpu-amd64 -f Dockerfile . && docker push ...
+#   # on an arm64 host with an NVIDIA GPU (e.g. a GB10/Grace-Blackwell node):
+#   docker build -t ghcr.io/gramatr/guards-unified:gpu-arm64 -f Dockerfile . && docker push ...
+#   # then, from either host:
+#   docker buildx imagetools create -t ghcr.io/gramatr/guards-unified:gpu \
+#     ghcr.io/gramatr/guards-unified:gpu-amd64 ghcr.io/gramatr/guards-unified:gpu-arm64
+#
+# Verified for real on BOTH architectures, not just "it builds": built
+# and ran this exact image on an x86_64 host with an NVIDIA RTX 4090
+# attached, and separately, natively (not emulated), on dgx-spark-01
+# (aarch64, NVIDIA GB10 / Grace-Blackwell). On both, the startup log
+# line from injection_guard.model's own device resolution reads
+# "Loading ... on cuda" (not "cpu"), and a real /v1/scan call returns
+# correct results. The standard PyPI torch wheel's CUDA support DOES
+# work on GB10 natively — that was an open question before this was
+# tested, not an assumption.
 #
 # Each install step below reuses the EXACT recipe already proven in
 # that project's own Dockerfile, not a guess at how to combine them:
 #   - gitleaks binary copy: secret-guard's docker/Dockerfile
-#   - torch CPU-only-first ordering: injection-guard's docker/Dockerfile.cpu
-#     (installing torch LAST would pull the default CUDA-bundled wheel
-#     as a transitive dependency of something else — order matters)
+#   - default (CUDA-bundled) torch wheel: injection-guard's own
+#     docker/Dockerfile (the non-.cpu variant)
 #   - en_core_web_lg as a direct wheel URL, not `spacy download`:
 #     pii-guard's pyproject.toml comment explains why the download-step
 #     form breaks under `uv`/non-interactive installs
@@ -25,12 +54,11 @@ WORKDIR /app
 RUN uv venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 
-# torch CPU-only FIRST — see injection-guard's own Dockerfile.cpu comment.
-RUN uv pip install torch --python /app/.venv/bin/python \
-      --index-url https://download.pytorch.org/whl/cpu
-
+# Default torch wheel (CUDA-bundled) — no CPU-only index override, so
+# the resolver pulls whatever torch's own default distribution ships,
+# same as injection-guard's own GPU-capable Dockerfile.
 RUN uv pip install --python /app/.venv/bin/python \
-      "fastapi>=0.115" "uvicorn[standard]>=0.30" "transformers>=4.44" \
+      "fastapi>=0.115" "uvicorn[standard]>=0.30" "torch>=2.2" "transformers>=4.44" \
       "presidio-analyzer>=2.2" "presidio-anonymizer>=2.2" "spacy>=3.7" \
       "en-core-web-lg @ https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl"
 
@@ -38,7 +66,9 @@ COPY app/ ./
 RUN chmod +x scan.sh report.sh
 
 ENV HF_HOME=/app/.cache/huggingface
-ENV INJECTION_GUARD_DEVICE=cpu
+# "auto": use a GPU if torch actually sees one, CPU otherwise — see
+# app/injection_guard/config.py. Deliberately NOT forced to cpu here,
+# unlike Dockerfile.cpu.
 
 EXPOSE 8700
 

@@ -79,8 +79,17 @@ Response:
 
 ## Building and running
 
+Two Dockerfiles, published as two image tags:
+
+| Tag | File | Use when |
+|---|---|---|
+| `ghcr.io/gramatr/guards-unified:cpu` | `Dockerfile.cpu` | No GPU, or never will be one — smaller image, no CUDA packages |
+| `ghcr.io/gramatr/guards-unified:gpu` | `Dockerfile` | A GPU might be available now or later — falls back to CPU automatically via `INJECTION_GUARD_DEVICE=auto` when none is visible |
+
+Both tags are real multi-arch manifests (`linux/amd64` + `linux/arm64`).
+
 ```
-docker build -t guards-unified:local .
+docker build -t guards-unified:local -f Dockerfile.cpu .   # or -f Dockerfile for GPU-capable
 docker run -p 127.0.0.1:8700:8700 \
   --env-file ~/.config/gramatr-guards/injection-guard.env \
   guards-unified:local
@@ -91,11 +100,47 @@ gated on Hugging Face — the env file must carry `HF_TOKEN=<token with
 the Llama 4 Community License accepted>`. See injection-guard's own
 README, "The HF_TOKEN problem," for how to get one.
 
-Verified end to end (not just "it builds"): all three detectors load
-at startup (gitleaks binary via `scan.sh`, Presidio's full recognizer
-set, the gated Llama model), and `POST /v1/scan` returns correct
-per-finding verdicts and a correctly-chained `redacted_text` against
-real test input.
+**Multi-arch GPU builds: build natively per architecture, never
+cross-build CUDA under QEMU emulation** — a CUDA-bundled torch install
+under emulation is extremely slow (abandoned after it ran far longer
+than a native build). Build on real hardware for each arch, then
+combine:
+
+```
+# on an amd64 host with an NVIDIA GPU:
+docker build -t ghcr.io/gramatr/guards-unified:gpu-amd64 -f Dockerfile . && docker push ghcr.io/gramatr/guards-unified:gpu-amd64
+# on an arm64 host with an NVIDIA GPU:
+docker build -t ghcr.io/gramatr/guards-unified:gpu-arm64 -f Dockerfile . && docker push ghcr.io/gramatr/guards-unified:gpu-arm64
+# then, from either host:
+docker buildx imagetools create -t ghcr.io/gramatr/guards-unified:gpu \
+  ghcr.io/gramatr/guards-unified:gpu-amd64 ghcr.io/gramatr/guards-unified:gpu-arm64
+```
+
+Verified end to end on real hardware, both architectures, not just "it
+builds": all three detectors load at startup (gitleaks binary via
+`scan.sh`, Presidio's full recognizer set, the gated Llama model), and
+`POST /v1/scan` returns correct per-finding verdicts and a
+correctly-chained `redacted_text` against real test input — on an
+x86_64 host with an NVIDIA RTX 4090 (confirmed GPU execution via the
+`"Loading ... on cuda"` startup log line), and separately, natively,
+on an aarch64 host with an NVIDIA GB10 (Grace-Blackwell) GPU, same
+confirmation. The standard PyPI `torch` wheel's CUDA support on GB10
+was an open question before this was tested — it works, confirmed, not
+assumed.
+
+**macOS / Apple Silicon**: the `:gpu`/`:cpu` multi-arch manifests both
+resolve to the `arm64` image on an Apple Silicon Mac and run correctly
+— but **without acceleration**. This build's GPU path is CUDA-only
+(NVIDIA); Apple's GPU is Metal, and Docker Desktop on macOS does not
+pass the host GPU through to its Linux VM at all (no `--gpus`
+equivalent for Metal). `INJECTION_GUARD_DEVICE=auto` correctly falls
+back to CPU on Mac, silently. Real Metal acceleration would require
+two separate things neither of which exist yet: an MPS branch in
+`injection_guard/model.py`'s device resolution (straightforward —
+MPS ships in the standard macOS torch wheel already), and running the
+process natively on the Mac host instead of inside Docker (MPS is
+unreachable from inside any container on macOS, same reasoning as the
+CUDA passthrough limit above).
 
 ## Relationship to the other guard repos
 
