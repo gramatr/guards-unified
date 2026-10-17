@@ -1,0 +1,56 @@
+# guards-unified/Dockerfile.cpu — lean CPU-only variant. Same app code
+# as Dockerfile (the GPU-capable default), but installs torch's
+# CPU-only wheel instead of the default PyPI wheel, which bundles the
+# full NVIDIA CUDA runtime even on a host that will never touch a GPU
+# — same reasoning as injection-guard's own docker/Dockerfile.cpu.
+# Use this tag on a host with no GPU and no plan to ever add one; use
+# the default Dockerfile anywhere a GPU might be available now or
+# later, since this CPU-only wheel cannot use one even if present.
+#
+# Multi-arch (linux/amd64, linux/arm64) — build with:
+#   docker buildx build --platform linux/amd64,linux/arm64 -t guards-unified:cpu -f Dockerfile.cpu .
+#
+# Each install step below reuses the EXACT recipe already proven in
+# that project's own Dockerfile, not a guess at how to combine them:
+#   - gitleaks binary copy: secret-guard's docker/Dockerfile
+#   - torch CPU-only-first ordering: injection-guard's docker/Dockerfile.cpu
+#     (installing torch LAST would pull the default CUDA-bundled wheel
+#     as a transitive dependency of something else — order matters)
+#   - en_core_web_lg as a direct wheel URL, not `spacy download`:
+#     pii-guard's pyproject.toml comment explains why the download-step
+#     form breaks under `uv`/non-interactive installs
+
+FROM ghcr.io/gitleaks/gitleaks:v8.30.1 AS gitleaks
+
+FROM python:3.12-slim
+COPY --from=gitleaks /usr/bin/gitleaks /usr/bin/gitleaks
+RUN apt-get update && apt-get install -y --no-install-recommends jq bash \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+
+WORKDIR /app
+RUN uv venv /app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+
+# torch CPU-only FIRST — see injection-guard's own Dockerfile.cpu comment.
+RUN uv pip install torch --python /app/.venv/bin/python \
+      --index-url https://download.pytorch.org/whl/cpu
+
+RUN uv pip install --python /app/.venv/bin/python \
+      "fastapi>=0.115" "uvicorn[standard]>=0.30" "transformers>=4.44" \
+      "presidio-analyzer>=2.2" "presidio-anonymizer>=2.2" "spacy>=3.7" \
+      "en-core-web-lg @ https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl"
+
+COPY app/ ./
+RUN chmod +x scan.sh report.sh
+
+ENV HF_HOME=/app/.cache/huggingface
+ENV INJECTION_GUARD_DEVICE=cpu
+
+EXPOSE 8700
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8700/health', timeout=3)" || exit 1
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8700"]
