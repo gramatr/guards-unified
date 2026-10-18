@@ -42,6 +42,7 @@ import os
 import subprocess
 import tempfile
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -55,6 +56,35 @@ logger = logging.getLogger("guards_unified")
 
 APP_DIR = Path(__file__).parent
 SCAN_SH = APP_DIR / "scan.sh"
+
+# Purely local, personal-use metrics — never transmitted anywhere, never
+# shared. Distinct from PROPOSAL.md's Track A (community telemetry) and
+# Track B (cpp-dwa governance telemetry), both still gated behind a
+# legal/product review that hasn't happened: this writes ONLY to a local
+# file on whatever host runs the container, nothing leaves this process.
+# Same discipline DATA_HANDLING.md already names as safe for the hosted
+# tier's own metrics: aggregate counts only, NEVER the scanned text, not
+# even redacted_text or a detail field that could carry a substring of
+# it. One JSON line per finding: {ts, type, verdict, reason_code}.
+METRICS_PATH = Path(os.environ.get("METRICS_PATH", "/app/metrics/metrics.jsonl"))
+
+
+def _log_metric(finding: dict) -> None:
+    try:
+        METRICS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        record = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "type": finding["type"],
+            "verdict": finding["verdict"],
+            "reason_code": finding.get("reason_code"),
+        }
+        with open(METRICS_PATH, "a") as f:
+            f.write(json.dumps(record) + "\n")
+    except Exception:
+        # Metrics are a convenience, never a reason to fail a scan --
+        # same fail-open-for-side-effects posture as everything else in
+        # this stack that isn't the detection result itself.
+        logger.exception("failed to write local metrics (non-fatal)")
 
 
 @asynccontextmanager
@@ -159,6 +189,9 @@ def scan(req: ScanRequest) -> dict:
     secret_result = _scan_secrets(req.text)
     pii_result = _scan_pii(req.text)
     injection_result = _classify_injection(req.text)
+
+    for finding in (secret_result, pii_result, injection_result):
+        _log_metric(finding)
 
     current = req.text
     if secret_result["verdict"] == "found":
