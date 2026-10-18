@@ -58,6 +58,39 @@ Response:
 
 `GET /health` for liveness.
 
+## Local metrics — purely personal, nothing transmitted
+
+Every `/v1/scan` call appends one JSON line per finding to
+`$METRICS_PATH` (default `/app/metrics/metrics.jsonl` inside the
+container — mount a host volume there to persist it):
+
+```json
+{"ts": "2026-10-18T02:28:07.396580+00:00", "type": "secret", "verdict": "found", "reason_code": ["SECRET_GITHUB-PAT"]}
+```
+
+**Only `ts`/`type`/`verdict`/`reason_code` — never the scanned text,
+never `redacted_text`, never anything from `detail`.** Confirmed by
+running real scans containing a name, an email, and a live-shaped
+token and reading the resulting file directly: none of it appears
+anywhere in the metrics output.
+
+This is deliberately **not** the same thing as the community/platform
+telemetry proposed in `gramatr/guards-stack`'s `PROPOSAL.md` (Track A,
+opt-in community reporting; Track B, `cpp-dwa`'s internal governance
+telemetry) — both of those are still gated behind a legal/product
+review that hasn't happened, and neither is implemented anywhere. This
+writes to a local file on whatever host runs the container and goes
+nowhere else; it needs no review because nothing leaves this process.
+
+To mount it:
+
+```
+docker run ... -v ~/.local/share/gramatr-guards/metrics:/app/metrics ...
+```
+
+(Already wired into the Compose files in `claude-plugin-guards` and
+`platform-guards`.)
+
 ## Scope — read before relying on this for anything
 
 - **Injection detection is jailbreak/override detection only.** Per
