@@ -213,9 +213,18 @@ CUDA passthrough limit above).
 
 ## License
 
-MIT for this repository's own code. The vendored `pii_guard` and
-`injection_guard` packages carry their own upstream licenses (MIT and
-MIT respectively — the model weights injection-guard loads at runtime
-are licensed separately under Meta's Llama 4 Community License, same
-as in injection-guard's own repo; see that project's README for the
-attribution requirements this image inherits).
+MIT for this repository's own code — see `LICENSE`. The vendored
+`pii_guard` and `injection_guard` packages carry their own upstream
+licenses (MIT and MIT respectively).
+
+**Built with Llama.** The model weights `injection_guard` loads at
+runtime (`meta-llama/Llama-Prompt-Guard-2-86M`) are licensed separately
+under Meta's Llama 4 Community License — this image carries the same
+redistribution obligation as `injection-guard`'s own repo, satisfied
+here the same way: `NOTICE` and `THIRD_PARTY_LICENSES/
+LLAMA4_COMMUNITY_LICENSE.txt` ship with this repo (byte-identical to
+`injection-guard`'s own copies, same model, same license), and the
+running service's `GET /about` endpoint carries the same attribution
+at runtime. A product website/about page display is a separate,
+not-yet-done requirement, same open item `injection-guard`'s own
+README tracks for itself.

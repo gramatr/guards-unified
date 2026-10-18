@@ -107,6 +107,25 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/about")
+def about() -> dict:
+    """Llama 4 Community License requires "Built with Llama" to be
+    displayed prominently wherever this ships -- this endpoint is the
+    runtime-visible half of that, same pattern as injection-guard's own
+    /about (this image vendors that code and carries the same
+    obligation). NOTICE/THIRD_PARTY_LICENSES/README cover the static
+    half. A product website/about page display is a separate,
+    not-yet-done requirement -- see README."""
+    return {
+        "service": "guards-unified",
+        "model": injection_model.config.MODEL_ID,
+        "attribution": "Built with Llama",
+        "license_notice": "Llama 4 is licensed under the Llama 4 Community License, "
+                           "Copyright © Meta Platforms, Inc. All Rights Reserved.",
+        "license_url": "https://www.llama.com/llama4/license/",
+    }
+
+
 def _scan_secrets(text: str) -> dict:
     """Shells out to the vendored scan.sh (gitleaks) rather than
     reimplementing its logic — same binary-detection behavior as
