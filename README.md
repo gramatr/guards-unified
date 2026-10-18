@@ -82,14 +82,32 @@ review that hasn't happened, and neither is implemented anywhere. This
 writes to a local file on whatever host runs the container and goes
 nowhere else; it needs no review because nothing leaves this process.
 
-To mount it:
+To mount it, **pre-create the host directory first and `chmod 777`
+it** — the container runs as a non-root user (fixed UID/GID 1000,
+confirmed GPU device access still works for this user on real
+hardware before this shipped), and a bind-mounted directory Docker
+auto-creates on first run comes back owned by root, which silently
+breaks every metrics write (confirmed by testing: the scan itself
+still succeeds, fail-open, but zero lines land — nothing erred loudly
+to tell you):
 
 ```
+mkdir -p ~/.local/share/gramatr-guards/metrics
+chmod 777 ~/.local/share/gramatr-guards/metrics
 docker run ... -v ~/.local/share/gramatr-guards/metrics:/app/metrics ...
 ```
 
+`chmod 777` rather than trying to match the container's UID exactly —
+simpler and host-portable, and the only thing that directory ever
+holds is the metrics file above, which carries no scanned text, so the
+broad permission costs nothing real. Directory write permission (not
+file ownership) governs whether you can delete files inside it, so
+this also fixes the original problem: no more `sudo` needed to manage
+the metrics file.
+
 (Already wired into the Compose files in `claude-plugin-guards` and
-`platform-guards`.)
+`platform-guards`, which pre-create and `chmod` this directory
+automatically — see those repos' own `guards-selfheal.sh` or README.)
 
 ## Scope — read before relying on this for anything
 
