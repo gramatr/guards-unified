@@ -65,6 +65,15 @@ RUN uv pip install --python /app/.venv/bin/python \
 COPY app/ ./
 RUN chmod +x scan.sh report.sh
 
+# Non-root — same fix and same fixed UID/GID as Dockerfile.cpu (see its
+# comment for why). Verified this doesn't break GPU device access as a
+# non-root user before shipping it, not assumed — see this PR's own
+# description for the real nvidia-smi/CUDA confirmation.
+RUN groupadd -g 1000 guards && useradd -u 1000 -g guards -d /app -s /usr/sbin/nologin guards \
+    && mkdir -p /app/.cache/huggingface /app/metrics \
+    && chown -R guards:guards /app
+USER guards
+
 ENV HF_HOME=/app/.cache/huggingface
 # "auto": use a GPU if torch actually sees one, CPU otherwise — see
 # app/injection_guard/config.py. Deliberately NOT forced to cpu here,
