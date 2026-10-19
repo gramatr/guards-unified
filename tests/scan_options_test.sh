@@ -40,6 +40,16 @@ expect_same    "placeholder env value skipped"      'x ${SOMETHING} y'          
 expect_same    "_FILE name skipped"                 "x /run/secrets/pw y"              SECRET_GUARD_ENV_VALUES=1 DB_PASSWORD_FILE=/run/secrets/pw
 expect_same    "non-secret name skipped"            "x $V y"                           SECRET_GUARD_ENV_VALUES=1 HOSTNAME_LABEL="$V"
 
+# --- SECRET_GUARD_SKIP_GITLEAKS=1: deterministic passes only -------------
+DSN='postgresql://svc:Tq7vN2xLm9Kd4RzP8wYb@db.internal:5432/app'
+expect_changed "skip-gitleaks still redacts a DSN password" "$DSN" SECRET_GUARD_SKIP_GITLEAKS=1
+expect_changed "skip-gitleaks + env values still redacts"   "x $V y" SECRET_GUARD_SKIP_GITLEAKS=1 SECRET_GUARD_ENV_VALUES=1 DB_PASSWORD="$V"
+if command -v gitleaks >/dev/null 2>&1; then
+  TOK='ghp_a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8'
+  expect_changed "gitleaks (default) redacts a vendor token"        "token is $TOK"
+  expect_same    "skip-gitleaks leaves a vendor-only token alone"   "token is $TOK" SECRET_GUARD_SKIP_GITLEAKS=1
+fi
+
 # --- robustness: no match cap, no quadratic blow-up --------------------
 # 300 distinct secret lines: the loop used to stop after 200 matches per rule
 # and leave the rest unredacted.

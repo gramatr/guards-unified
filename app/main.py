@@ -226,6 +226,22 @@ def _classify_injection(text: str) -> dict:
         return {"type": "injection", "verdict": "error", "reason_code": None, "detail": {"error": str(e)}}
 
 
+@app.post("/v1/scan/secret")
+def scan_secret(req: ScanRequest) -> dict:
+    """The secret axis alone. Use this where secrets are what matter (tool
+    output, commits, anything about to be published): it is roughly 30 ms
+    inside the container, while the full /v1/scan also runs the PII and
+    prompt-injection models, which cost about 0.25 s per KB of text and are
+    flag-only. The secret scan must never wait on them.
+
+    Same finding shape as /v1/scan; redacted_text is the text with secrets
+    redacted (no PII redaction)."""
+    secret_result = _scan_secrets(req.text)
+    _log_metric(secret_result)
+    redacted = secret_result["detail"]["redacted_text"] if secret_result["verdict"] == "found" else req.text
+    return {"findings": [secret_result], "redacted_text": redacted}
+
+
 @app.post("/v1/scan")
 def scan(req: ScanRequest) -> dict:
     """Runs all three detectors unconditionally — none gates or
