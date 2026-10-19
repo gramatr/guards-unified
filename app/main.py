@@ -184,15 +184,12 @@ def _scan_secrets(text: str) -> dict:
             "detail": detail,
         }
     except subprocess.TimeoutExpired:
-        # A scan that runs out of time must not return the text unredacted:
-        # that turned "large input" into "unredacted output". Fail closed.
-        logger.error("secret scan timed out, withholding output")
-        return {
-            "type": "secret",
-            "verdict": "found",
-            "reason_code": ["SECRET_SCAN_TIMEOUT"],
-            "detail": {"redacted_text": REDACTION_WITHHELD, "rule_count": 0, "redaction_failed": True},
-        }
+        # Same outcome as any other scan error (the caller keeps the original
+        # text); logged so a slow scan is visible instead of silent. Withholding
+        # the output instead was tried and dropped: it takes a user's whole
+        # result away, which is a worse trade than a rare unscanned output.
+        logger.error("secret scan timed out after 15s, text left unscanned")
+        return {"type": "secret", "verdict": "error", "reason_code": ["SECRET_SCAN_TIMEOUT"], "detail": {"error": "timeout"}}
     except Exception as e:
         logger.exception("secret scan failed")
         return {"type": "secret", "verdict": "error", "reason_code": None, "detail": {"error": str(e)}}
