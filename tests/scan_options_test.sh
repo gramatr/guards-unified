@@ -40,5 +40,25 @@ expect_same    "placeholder env value skipped"      'x ${SOMETHING} y'          
 expect_same    "_FILE name skipped"                 "x /run/secrets/pw y"              SECRET_GUARD_ENV_VALUES=1 DB_PASSWORD_FILE=/run/secrets/pw
 expect_same    "non-secret name skipped"            "x $V y"                           SECRET_GUARD_ENV_VALUES=1 HOSTNAME_LABEL="$V"
 
+# --- robustness: no match cap, no quadratic blow-up --------------------
+# 300 distinct secret lines: the loop used to stop after 200 matches per rule
+# and leave the rest unredacted.
+many="$(for i in $(seq 1 300); do printf 'APP%s_PASSWORD=hunter2-%s\n' "$i" "$i"; done)"
+left="$(printf '%s' "$many" | bash "$SCAN" 2>/dev/null | grep -c 'hunter2-' || true)"
+if [ "$left" = "0" ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: $left of 300 secret lines survive redaction (match cap?)"; fi
+
+# ~230 KB of prose with one secret at the end took 19 s when the span split
+# was quadratic (1 MB: 447 s, past the service's 15 s timeout, which then
+# failed open). Linear it is well under a second or two; allow 15 s for slow CI.
+big="$(python3 -I -c "
+import random, string
+random.seed(1)
+print(' '.join(''.join(random.choice(string.ascii_lowercase) for _ in range(random.randint(3, 9))) for _ in range(34000)))
+print('DB_PASSWORD=Tq7vN2xLm9Kd4RzP8wYb')")"
+start=$SECONDS
+out="$(printf '%s' "$big" | bash "$SCAN" 2>/dev/null)"
+took=$((SECONDS - start))
+if [[ "$out" != *Tq7vN2xLm9Kd4RzP8wYb* ]] && [ "$took" -le 15 ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: large input with a secret: redacted=$([[ "$out" != *Tq7vN2xLm9Kd4RzP8wYb* ]] && echo yes || echo NO) took ${took}s (limit 15s)"; fi
+
 echo "scan options: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

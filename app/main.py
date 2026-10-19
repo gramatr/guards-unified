@@ -183,6 +183,13 @@ def _scan_secrets(text: str) -> dict:
             "reason_code": [f"SECRET_{f.get('RuleID', 'UNKNOWN').upper()}" for f in findings] or None,
             "detail": detail,
         }
+    except subprocess.TimeoutExpired:
+        # Same outcome as any other scan error (the caller keeps the original
+        # text); logged so a slow scan is visible instead of silent. Withholding
+        # the output instead was tried and dropped: it takes a user's whole
+        # result away, which is a worse trade than a rare unscanned output.
+        logger.error("secret scan timed out after 15s, text left unscanned")
+        return {"type": "secret", "verdict": "error", "reason_code": ["SECRET_SCAN_TIMEOUT"], "detail": {"error": "timeout"}}
     except Exception as e:
         logger.exception("secret scan failed")
         return {"type": "secret", "verdict": "error", "reason_code": None, "detail": {"error": str(e)}}
