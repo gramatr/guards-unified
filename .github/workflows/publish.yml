@@ -53,7 +53,7 @@ jobs:
             ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-${{ github.ref_name }}
 
       - name: Trivy scan the just-published image before anyone pulls it
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
           image-ref: ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-${{ github.ref_name }}

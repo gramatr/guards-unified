@@ -42,14 +42,13 @@ import os
 import subprocess
 import tempfile
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
+import injection_guard.model as injection_model
+import pii_guard.engine as pii_engine
 from fastapi import FastAPI
 from pydantic import BaseModel
-
-import pii_guard.engine as pii_engine
-import injection_guard.model as injection_model
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("guards_unified")
@@ -73,7 +72,7 @@ def _log_metric(finding: dict) -> None:
     try:
         METRICS_PATH.parent.mkdir(parents=True, exist_ok=True)
         record = {
-            "ts": datetime.now(timezone.utc).isoformat(),
+            "ts": datetime.now(UTC).isoformat(),
             "type": finding["type"],
             "verdict": finding["verdict"],
             "reason_code": finding.get("reason_code"),
@@ -143,6 +142,7 @@ def _scan_secrets(text: str) -> dict:
             text=True,
             env=env,
             timeout=15,
+            check=False,
         )
         redacted_text = result.stdout
         findings = []

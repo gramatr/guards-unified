@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Trivy filesystem scan (Dockerfiles, app source)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -49,7 +49,7 @@ jobs:
       - name: Build CPU image
         run: docker build -f Dockerfile.cpu -t guards-unified:ci-cpu .
       - name: Trivy image scan — actual installed deps, not the Dockerfile's version floors
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
           image-ref: guards-unified:ci-cpu
