@@ -57,9 +57,17 @@ ENV PATH="/app/.venv/bin:$PATH"
 # Default torch wheel (CUDA-bundled) — no CPU-only index override, so
 # the resolver pulls whatever torch's own default distribution ships,
 # same as injection-guard's own GPU-capable Dockerfile.
+# cryptography/setuptools/wheel/jaraco.context floors below aren't
+# app dependencies -- they're pulled in transitively, and CI's Trivy
+# image scan (2026-10-18, against Dockerfile.cpu) found each one's
+# resolved version behind a disclosed CVE (CVE-2026-69247/69249,
+# CVE-2025-47273, CVE-2026-24049, CVE-2026-23949). Pinning floors here
+# too, not just letting the resolver pick, so this variant can't
+# silently regress to the same vulnerable versions.
 RUN uv pip install --python /app/.venv/bin/python \
       "fastapi>=0.115" "uvicorn[standard]>=0.30" "torch>=2.2" "transformers>=4.44" \
       "presidio-analyzer>=2.2" "presidio-anonymizer>=2.2" "spacy>=3.7" \
+      "cryptography>=50.0.0" "setuptools>=78.1.1" "wheel>=0.46.2" "jaraco.context>=6.1.0" \
       "en-core-web-lg @ https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl"
 
 COPY app/ ./
