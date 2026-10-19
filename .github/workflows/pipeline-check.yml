@@ -6,7 +6,8 @@ name: Pipeline check
 #   1. The ghcr.io package is linked to this repo and this repo has
 #      Write under the package's "Manage Actions access" (web-UI-only
 #      settings, lost if the repo is recreated). Tested by pushing a
-#      tiny empty image to a scratch tag with GITHUB_TOKEN.
+#      tiny empty image to a scratch tag with GITHUB_TOKEN (the tag is left
+#      behind on purpose, see the note in the registry-push job).
 #   2. This repo is in the org's dgx-arm64-public runner group, so the
 #      arm64/GPU build can reach dgx-spark-01. Tested by running a
 #      trivial job on that runner.
@@ -41,18 +42,10 @@ jobs:
       - name: Confirm it is readable back from the registry
         run: docker buildx imagetools inspect ghcr.io/gramatr/guards-unified:link-check
 
-      - name: Delete the scratch tag (best effort)
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          id="$(gh api "orgs/gramatr/packages/container/guards-unified/versions" --paginate \
-            --jq '.[] | select(.metadata.container.tags | index("link-check")) | .id' | head -n1)"
-          if [ -n "$id" ]; then
-            gh api -X DELETE "orgs/gramatr/packages/container/guards-unified/versions/$id"
-          else
-            echo "::warning::scratch tag not found for cleanup; delete :link-check by hand in the package UI (harmless, empty image)"
-          fi
+      # No cleanup step: GITHUB_TOKEN cannot list package versions (404) and
+      # deleting one needs a delete:packages token, which this workflow must
+      # not hold. The scratch image is empty and harmless; delete the
+      # :link-check tag in the package UI whenever convenient.
 
   arm64-runner:
     runs-on: [self-hosted, ARM64, local-gpu]

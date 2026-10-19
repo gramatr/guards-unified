@@ -121,3 +121,24 @@ release or touching `:cpu`/`:gpu`: one job pushes an empty scratch image
 to `:link-check` using `GITHUB_TOKEN`, the other runs on the arm64
 runner. If the registry job fails with `permission_denied:
 write_package`, re-check step 1.
+
+## Verify a release live
+
+After Watchtower updates the hosts (`/about` shows the new version), run the
+self-test against the running service, not just CI's copy of the image:
+
+```
+python3 tests/redaction_selftest.py --endpoint http://127.0.0.1:8700
+```
+
+Every required case must pass: a secret finding must never come back with
+unchanged text, and the key, DSN, header, flag and credential-file shapes
+must all be redacted. The harmless-lookalike cases must stay byte-identical.
+The two opt-in switches are covered by `tests/scan_options_test.sh`
+(`SECRET_GUARD_REDACT_KEY_IDS`, `SECRET_GUARD_ENV_VALUES`).
+
+Cancelling a release: cancel the Publish run before `merge-multiarch`
+finishes. The bare `:cpu` / `:gpu` tags change only in that final step, so
+nothing running on a host is affected. A pushed tag is not deleted by
+cancelling the run.
+
