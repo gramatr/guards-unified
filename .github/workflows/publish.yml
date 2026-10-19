@@ -15,7 +15,25 @@ permissions:
   packages: write
 
 jobs:
+  verify-tag-matches-version:
+    # "Clean release" means the tag we're about to publish from is the
+    # same version the VERSION-bump PR actually merged -- not whatever
+    # commit happened to be on main when someone ran `git tag`. Fails
+    # loudly rather than silently publishing a mismatched version.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag vs VERSION file
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          file="$(cat VERSION)"
+          if [ "$tag" != "$file" ]; then
+            echo "::error::Tag v$tag does not match VERSION file ($file) on this commit. Bump VERSION in a PR, merge it, THEN tag that merge commit."
+            exit 1
+          fi
+
   build-and-push:
+    needs: verify-tag-matches-version
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -51,6 +69,7 @@ jobs:
           tags: |
             ghcr.io/gramatr/guards-unified:${{ matrix.variant }}
             ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-${{ github.ref_name }}
+            ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-sha-${{ github.sha }}
 
       - name: Trivy scan the just-published image before anyone pulls it
         uses: aquasecurity/trivy-action@v0.36.0

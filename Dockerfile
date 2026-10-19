@@ -73,6 +73,16 @@ RUN uv pip install --python /app/.venv/bin/python \
 COPY app/ ./
 RUN chmod +x scan.sh report.sh
 
+# The Llama 4 Community License requires a copy of the license text to
+# accompany any redistribution. The /about endpoint (app/main.py) only
+# covers the *runtime-visible* half of that obligation -- someone who
+# `docker pull`s this image, never the git repo, needs these files
+# inside the image itself, not just committed to the repo they'll
+# never clone. Into /app/licenses/, not /app/ root, so they can't
+# collide with or be mistaken for application files.
+COPY LICENSE NOTICE /app/licenses/
+COPY THIRD_PARTY_LICENSES/ /app/licenses/THIRD_PARTY_LICENSES/
+
 # Non-root — same fix and same fixed UID/GID as Dockerfile.cpu (see its
 # comment for why). Verified this doesn't break GPU device access as a
 # non-root user before shipping it, not assumed — see this PR's own
