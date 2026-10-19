@@ -135,6 +135,13 @@ jobs:
       matrix:
         variant: [cpu, gpu]
     steps:
+      # Needed for .trivyignore below -- without it, the Trivy scan
+      # step has no working directory content at all and re-flags the
+      # 34 already-tracked, upstream-blocked gitleaks Go CVEs (#7) as
+      # new, every single run. Confirmed by testing this job for real
+      # against v0.1.2 (2026-10-19).
+      - uses: actions/checkout@v4
+
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/login-action@v3
