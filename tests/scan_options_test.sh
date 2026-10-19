@@ -50,6 +50,26 @@ if command -v gitleaks >/dev/null 2>&1; then
   expect_same    "skip-gitleaks leaves a vendor-only token alone"   "token is $TOK" SECRET_GUARD_SKIP_GITLEAKS=1
 fi
 
+# --- base64 pass (SECRET_GUARD_B64, default on) ---------------------------
+B64DSN="$(printf 'postgresql://svc:Tq7vN2xLm9Kd4RzP8wYb@db.internal:5432/app' | base64 -w0)"
+expect_changed "a DSN hidden in base64 under an innocent key" "{\"conn\": \"$B64DSN\"}"
+expect_same    "SECRET_GUARD_B64=0 turns the pass off"         "{\"conn\": \"$B64DSN\"}" SECRET_GUARD_B64=0
+expect_same    "a git hash line is untouched"                  "commit 3f2a9c1e5b7d4a6082f1c3e5a7b9d1f3e5a7c9b1 Author: x"
+expect_same    "base64 of ordinary prose is untouched"         "{\"note\": \"$(printf 'The quick brown fox jumps over the lazy dog and keeps running far away' | base64 -w0)\"}"
+
+# Hash-heavy text (a git log) must not pay for the base64 pass. A bounded
+# {44,4096} regex in bash itself cost +2.9 s per scan; with one grep it is
+# a few ms. Fail if a 100 KB hash-heavy scan takes more than 2 s.
+hashy="$(python3 -I -c "
+import random
+random.seed(7)
+h = lambda n: ''.join(random.choice('0123456789abcdef') for _ in range(n))
+print('\n'.join('commit %s\nAuthor: dev\n\n    change %d see %s tree %s\n' % (h(40), i, h(64), h(40)) for i in range(450)))")"
+start=$SECONDS
+printf '%s' "$hashy" | bash "$SCAN" >/dev/null 2>&1
+took=$((SECONDS - start))
+if [ "$took" -le 2 ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: hash-heavy 100 KB scan took ${took}s (limit 2s)"; fi
+
 # --- robustness: no match cap, no quadratic blow-up --------------------
 # 300 distinct secret lines: the loop used to stop after 200 matches per rule
 # and leave the rest unredacted.

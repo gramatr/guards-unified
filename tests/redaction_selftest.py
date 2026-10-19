@@ -227,6 +227,17 @@ def main() -> int:
         "vendor/gcloud-access-token": ["ya29.a0AfB_byT3kZq8wXr5tNm2PvKd9sL1"],
         "vendor/bcrypt-hash": ["N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"[:20]],
     }
+    # Secrets hiding in base64 under an innocent key name (guards-coordination#11).
+    import base64
+    pem_b64 = base64.b64encode(keys["ec-sec1"].encode()).decode()
+    dsn_b64 = base64.b64encode(f"postgresql://svc:{pw}@db.internal:5432/app".encode()).decode()
+    env_b64 = base64.b64encode(f"DB_PASSWORD={b}\nOTHER=1".encode()).decode()
+    cases_b.update({
+        "base64/dsn-in-json": '{"conn": "' + dsn_b64 + '"}',
+        "base64/env-file": "data:\n  cfg: " + env_b64 + "\n",
+        "base64/private-key": '{"blob": "' + pem_b64 + '"}',
+    })
+    materials_b.update({"base64/dsn-in-json": [dsn_b64], "base64/env-file": [env_b64], "base64/private-key": [pem_b64]})
     cases.update(cases_b)
     materials.update(materials_b)
     for cname, text in cases.items():
@@ -241,6 +252,10 @@ def main() -> int:
         "benign/url-without-password": "https://github.com/gramatr/guards-unified",
         "benign/token-count": "token_count: 1234",
         "benign/plural-heading-code-span": "Query-string tokens: `access_token=`, presigned URLs",
+        "benign/base64-sentence": '{"note": "' + base64.b64encode(b"The quick brown fox jumps over the lazy dog and keeps running far away").decode() + '"}',
+        "benign/base64-binary": '{"img": "' + base64.b64encode(bytes(range(256)) * 2).decode() + '"}',
+        "benign/git-hash": "commit 3f2a9c1e5b7d4a6082f1c3e5a7b9d1f3e5a7c9b1 Author: x",
+        "benign/sha256-hex": "sha256:" + "ab12" * 16,
         "benign/word-containing-pass": "compass: northwest heading",
         "benign/pass-true": "pass: true",
         "benign/tests-pass-prose": "all the tests pass: 12 of 12 ran",
