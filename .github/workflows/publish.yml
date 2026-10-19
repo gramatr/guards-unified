@@ -6,15 +6,21 @@ name: Publish
 # silently become a new `:cpu`/`:gpu` for everyone until someone cuts
 # a release. Tag with `vX.Y.Z` to publish.
 #
-# amd64 only here, on purpose, for BOTH variants -- GitHub-hosted
-# runners are amd64 with no GPU. Cross-building arm64 under QEMU in
-# one job is exactly what this repo's Dockerfile header already
-# documents as tried-and-abandoned for the GPU variant (too slow), and
-# CUDA correctness can't be verified under emulation anyway. arm64 +
-# real-GPU builds stay the documented manual process (native build on
-# each real host, e.g. dgx-spark-01, then `docker buildx imagetools
-# create` to combine) until a self-hosted ARM/GPU runner exists to
-# automate that safely -- not attempted here.
+# Two stages, because arm64/real-GPU can't be built here:
+#   1. push (vX.Y.Z tag) -- builds amd64 only, for BOTH variants.
+#      GitHub-hosted runners are amd64 with no GPU; cross-building
+#      arm64 under QEMU in one job is exactly what this repo's
+#      Dockerfile header already documents as tried-and-abandoned for
+#      the GPU variant (too slow), and CUDA correctness can't be
+#      verified under emulation anyway. Publishes to :<variant>-amd64
+#      and :<variant>-amd64-vX.Y.Z -- NOT the bare :cpu/:gpu tag (see
+#      merge-multiarch below for why that distinction is load-bearing).
+#   2. workflow_dispatch (after someone builds+pushes the arm64 half
+#      natively on real hardware, e.g. dgx-spark-01, tagged
+#      :<variant>-arm64-vX.Y.Z) -- merges both halves into the real
+#      multi-arch :cpu/:gpu tags everyone actually pulls. Manual
+#      because there's no self-hosted ARM/GPU runner to automate the
+#      arm64 half from here.
 #
 # Auth: ghcr.io/gramatr/guards-unified's container package predates
 # any Actions-based push and was never linked to this repo (GitHub
@@ -28,6 +34,11 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag (vX.Y.Z) whose amd64 + arm64 images to merge into real multi-arch :cpu/:gpu. Both must already be pushed (amd64 by this workflow's own tag-push run, arm64 by the manual native build on real hardware, e.g. dgx-spark-01) before running this."
+        required: true
 
 permissions:
   contents: read
@@ -35,6 +46,7 @@ permissions:
 
 jobs:
   verify-tag-matches-version:
+    if: github.event_name == 'push'
     # "Clean release" means the tag we're about to publish from is the
     # same version the VERSION-bump PR actually merged -- not whatever
     # commit happened to be on main when someone ran `git tag`. Fails
@@ -52,6 +64,7 @@ jobs:
           fi
 
   build-and-push:
+    if: github.event_name == 'push'
     needs: verify-tag-matches-version
     runs-on: ubuntu-latest
     strategy:
@@ -78,6 +91,14 @@ jobs:
           fi
 
       - name: Build and push (amd64)
+        # -amd64 suffix, not the bare :cpu/:gpu -- publishing straight
+        # to the bare tag here is the exact bug found 2026-10-19:
+        # it makes an amd64-ONLY image "the" :cpu tag immediately, so
+        # every arm64 host (e.g. dgx-spark-01) that pulls :cpu gets a
+        # platform mismatch and self-heal fail-open silently keeps
+        # whatever stale image happened to be cached locally. The bare
+        # :cpu/:gpu tags are now only ever written by merge-multiarch,
+        # below, as a real multi-arch manifest.
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -85,15 +106,58 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ghcr.io/gramatr/guards-unified:${{ matrix.variant }}
-            ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-${{ github.ref_name }}
+            ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-amd64
+            ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-amd64-${{ github.ref_name }}
             ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-sha-${{ github.sha }}
 
       - name: Trivy scan the just-published image before anyone pulls it
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
-          image-ref: ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-${{ github.ref_name }}
+          image-ref: ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-amd64-${{ github.ref_name }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+  merge-multiarch:
+    # The missing step that caused 2026-10-19's bug: amd64 (built here)
+    # and arm64 (built manually on real hardware, e.g. dgx-spark-01 --
+    # no self-hosted ARM/GPU runner exists to automate that half) were
+    # separate single-platform tags, never combined into one real
+    # multi-arch manifest under the plain :cpu/:gpu tags that every
+    # consumer (claude-plugin-guards' docker-compose.yml) actually
+    # pulls. Manual trigger because the arm64 half can't be automated
+    # from here -- run this AFTER both halves exist for a version:
+    #   gh workflow run publish.yml -f version=vX.Y.Z
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        variant: [cpu, gpu]
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: bhandrigan
+          password: ${{ secrets.GHCR_PUBLISH_TOKEN }}
+
+      - name: Merge amd64 + arm64 into one multi-arch tag
+        run: |
+          docker buildx imagetools create \
+            -t ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-${{ inputs.version }} \
+            ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-amd64-${{ inputs.version }} \
+            ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-arm64-${{ inputs.version }}
+          docker buildx imagetools create \
+            -t ghcr.io/gramatr/guards-unified:${{ matrix.variant }} \
+            ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-${{ inputs.version }}
+
+      - name: Trivy scan the merged tag before anyone pulls it
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-${{ inputs.version }}
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
