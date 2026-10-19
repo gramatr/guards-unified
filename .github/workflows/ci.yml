@@ -67,18 +67,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build CPU image
         run: docker build -f Dockerfile.cpu -t guards-unified:selftest .
-      - name: Start the service
-        run: |
-          docker run -d --name gu -p 127.0.0.1:8700:8700 guards-unified:selftest
-          for i in $(seq 1 60); do
-            curl -sf http://127.0.0.1:8700/health >/dev/null && exit 0
-            sleep 5
-          done
-          docker logs gu
-          echo "::error::service did not become healthy in 300s"
-          exit 1
-      - name: Redaction self-test
-        run: python3 tests/redaction_selftest.py --endpoint http://127.0.0.1:8700
+      - name: Redaction self-test against the built image
+        # Runs /app/scan.sh inside the image; the full service is not
+        # started because its injection model is a gated Hugging Face
+        # download the public CI has no token for.
+        run: python3 tests/redaction_selftest.py --image guards-unified:selftest
 
   flag-scheduled-failure:
     needs: [lint, cve-scan-source, cve-scan-image, redaction-selftest]

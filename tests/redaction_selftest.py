@@ -1,8 +1,10 @@
 """Redaction self-test for guards-unified's secret axis.
 
-Two modes, same checks:
-  --endpoint URL   POST each case to a running guards-unified /v1/scan
-                   (what CI does against the freshly built image).
+Three modes, same checks:
+  --image IMG      run /app/scan.sh inside a built docker image (what CI
+                   does: tests the shipped artifact without starting the
+                   service, whose injection model is a gated HF download).
+  --endpoint URL   POST each case to a running guards-unified /v1/scan.
   --scan-sh        run app/scan.sh directly (needs gitleaks + jq on PATH).
 
 Invariants asserted for EVERY case, regardless of rule:
@@ -65,9 +67,13 @@ def key_material(pem: str) -> list[str]:
     return [line for line in pem.splitlines() if line and not line.startswith("-----") and len(line) >= KEY_BODY_MIN]
 
 
+IMAGE_MARKER = "\n@@FINDINGS@@\n"
+
+
 class Scanner:
-    def __init__(self, endpoint: str | None):
+    def __init__(self, endpoint: str | None, image: str | None = None):
         self.endpoint = endpoint
+        self.image = image
 
     def scan(self, text: str) -> tuple[bool, str]:
         """Returns (secret_found, redacted_text)."""
@@ -83,6 +89,21 @@ class Scanner:
             # The secret axis's own redacted_text, so PII redaction can
             # never mask a secret-axis failure.
             return secret["verdict"] == "found", secret["detail"].get("redacted_text", "")
+        if self.image:
+            script = (
+                "SECRET_GUARD_FINDINGS_JSON=/tmp/f.json /app/scan.sh; "
+                f"printf '{IMAGE_MARKER}'; cat /tmp/f.json 2>/dev/null"
+            )
+            proc = subprocess.run(
+                ["docker", "run", "--rm", "-i", "--entrypoint", "bash", self.image, "-c", script],
+                input=text,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            out, _, raw = proc.stdout.rpartition(IMAGE_MARKER)
+            raw = raw.strip()
+            return bool(raw) and raw != "null" and bool(json.loads(raw)), out
         with tempfile.NamedTemporaryFile(suffix=".json") as findings:
             proc = subprocess.run(
                 ["bash", str(APP_DIR / "scan.sh")],
@@ -100,10 +121,11 @@ class Scanner:
 def main() -> int:
     ap = argparse.ArgumentParser()
     mode = ap.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--image")
     mode.add_argument("--endpoint")
     mode.add_argument("--scan-sh", action="store_true")
     args = ap.parse_args()
-    scanner = Scanner(args.endpoint)
+    scanner = Scanner(args.endpoint, args.image)
 
     failures: list[str] = []
     gaps: list[str] = []
