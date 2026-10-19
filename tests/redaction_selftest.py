@@ -189,6 +189,42 @@ def main() -> int:
         "yaml/single-quoted": [pw], "header/bearer": [pw], "header/basic": ["YWRtaW46c2VjcmV0cGFzcw=="],
         "query/access-token": [pw], "aws/secret-access-key": ["wJalrXUtnFEMIK7MDENGbPxRfiCYzzzzzzzzzzzz"],
     }
+    # Batch B (guards-coordination#10) and P2 vendor shapes (#11).
+    b = "Xk9mQ4vT2pLw8RzN5bJc7Hd3"
+    azure = "abc8Q~" + "Zx3mN7pQ2rT5vW8yB1cD4fG6hJ9kL0nM2o"
+    esc = "\033"
+    cases_b = {
+        "alias/pw": f"GRAFANA_ADMIN_PW={b}",
+        "alias/pass-quoted": f'ADMIN_PASS: "{b}"',
+        "alias/cred": f"DB_CRED={b}",
+        "flag/password-space": f"clickhouse-client --host h --password {b} --query x",
+        "flag/mysql-glued": f"mysql -u root -p{b} appdb",
+        "flag/redis-cli": f"redis-cli -h cache -a {b} ping",
+        "flag/sshpass": f"sshpass -p {b} ssh host",
+        "flag/docker-login": f"docker login -u bob -p {b} registry.example.invalid",
+        "flag/mc-alias-set": f"mc alias set mine https://s3.example.invalid ACCESSIDEXAMPLE0001 {b}",
+        "header/cookie": f"Cookie: session={b}; theme=dark",
+        "file/netrc": f"machine h.example.invalid login bob password {b}",
+        "file/pgpass": f"db.internal:5432:app:svc:{b}",
+        "multiline/k8s-env": f'- name: DB_PASSWORD\n    value: "{b}"',
+        "multiline/bitwarden-json": f'{{"key": "DB_PASSWORD", "value": "{b}"}}',
+        "ansi/coloured-key": f"{esc}[32mDB_PASSWORD{esc}[0m={b}",
+        "kube/client-key-data": f"client-key-data: {b}{b}",
+        "vendor/azure-client-secret": f"appId: x\npassword-ish: {azure}",
+        "vendor/gcloud-access-token": "Authorization-less ya29." + "a0Af" + "B_byT3kZq8wXr5tNm2PvKd9sL1",
+        "vendor/bcrypt-hash": "admin:$2y$10$" + "N9qo8uLOickgx2ZMRZoMye" + "IjZAgcfl7p92ldGxad68LJZdL17lhWy",
+    }
+    materials_b = {
+        "alias/pw": [b], "alias/pass-quoted": [b], "alias/cred": [b], "flag/password-space": [b],
+        "flag/mysql-glued": [b], "flag/redis-cli": [b], "flag/sshpass": [b], "flag/docker-login": [b],
+        "flag/mc-alias-set": [b], "header/cookie": [b], "file/netrc": [b], "file/pgpass": [b],
+        "multiline/k8s-env": [b], "multiline/bitwarden-json": [b], "ansi/coloured-key": [b],
+        "kube/client-key-data": [b], "vendor/azure-client-secret": [azure],
+        "vendor/gcloud-access-token": ["ya29.a0AfB_byT3kZq8wXr5tNm2PvKd9sL1"],
+        "vendor/bcrypt-hash": ["N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"[:20]],
+    }
+    cases.update(cases_b)
+    materials.update(materials_b)
     for cname, text in cases.items():
         check(cname, text, materials[cname], required=True)
 
@@ -201,6 +237,13 @@ def main() -> int:
         "benign/url-without-password": "https://github.com/gramatr/guards-unified",
         "benign/token-count": "token_count: 1234",
         "benign/plural-heading-code-span": "Query-string tokens: `access_token=`, presigned URLs",
+        "benign/word-containing-pass": "compass: northwest heading",
+        "benign/pass-true": "pass: true",
+        "benign/tests-pass-prose": "all the tests pass: 12 of 12 ran",
+        "benign/ssh-port-flag": "ssh -p 2222 host.example.invalid",
+        "benign/docker-publish-flag": "docker run -p 8080:80 nginx",
+        "benign/mysql-prompt": "mysql -u root -p appdb",
+        "benign/access-key-id-default": "AccessKey : 48388a15798489a302330828b2388025",
         "benign/begin-prose": "hello -----BEGIN of a story\nline2\n",
     }
     for bname, text in benign.items():
