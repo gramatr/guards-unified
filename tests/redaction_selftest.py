@@ -25,6 +25,7 @@ rotated or not, belongs in this file.
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -60,6 +61,9 @@ def key_forms(pem: str) -> dict[str, str]:
         "crlf": pem.replace("\n", "\r\n"),
         "json-escaped": json.dumps({"private_key": pem}),
         "yaml-block": "key: |\n" + "\n".join("  " + line for line in lines) + "\n",
+        # No END marker: `head`, clipped or truncated output.
+        "truncated-no-end": "\n".join(lines[:-1]) + "\n",
+        "clipped-200-bytes": pem[:200],
     }
 
 
@@ -110,7 +114,7 @@ class Scanner:
                 input=text,
                 capture_output=True,
                 text=True,
-                env={"PATH": __import__("os").environ["PATH"], "SECRET_GUARD_FINDINGS_JSON": findings.name},
+                env={"PATH": os.environ["PATH"], "SECRET_GUARD_FINDINGS_JSON": findings.name},
                 check=False,
             )
             raw = Path(findings.name).read_text().strip()
@@ -143,6 +147,9 @@ def main() -> int:
                 failures.append(f"{name}: found, but {len(leaked)}/{len(material)} secret fragments survive redaction")
         elif required:
             failures.append(f"{name}: not detected")
+            dump = os.environ.get("SELFTEST_DUMP_DIR")
+            if dump:
+                Path(dump, name.replace("/", "_") + ".txt").write_text(text)
         else:
             gaps.append(f"{name}: still undetected ({gap_ref})")
 
@@ -153,9 +160,6 @@ def main() -> int:
         material = key_material(pem)
         for fname, text in key_forms(pem).items():
             check(f"{kname}/{fname}", text, material, required=True)
-        # Shapes the PEM rule does not detect yet (guards-coordination#10).
-        lines = pem.splitlines()
-        check(f"{kname}/truncated-no-end", "\n".join(lines[:-1]) + "\n", material, False, "guards-coordination#10")
 
     # Connection strings: synthetic values, shape only (guards-coordination#1).
     dsn_secret = "Tq7vN2xLm9Kd4RzP8wYb"
