@@ -183,6 +183,16 @@ def _scan_secrets(text: str) -> dict:
             "reason_code": [f"SECRET_{f.get('RuleID', 'UNKNOWN').upper()}" for f in findings] or None,
             "detail": detail,
         }
+    except subprocess.TimeoutExpired:
+        # A scan that runs out of time must not return the text unredacted:
+        # that turned "large input" into "unredacted output". Fail closed.
+        logger.error("secret scan timed out, withholding output")
+        return {
+            "type": "secret",
+            "verdict": "found",
+            "reason_code": ["SECRET_SCAN_TIMEOUT"],
+            "detail": {"redacted_text": REDACTION_WITHHELD, "rule_count": 0, "redaction_failed": True},
+        }
     except Exception as e:
         logger.exception("secret scan failed")
         return {"type": "secret", "verdict": "error", "reason_code": None, "detail": {"error": str(e)}}
