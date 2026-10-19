@@ -58,6 +58,45 @@ Response:
 
 `GET /health` for liveness.
 
+## What the secret axis detects
+
+Three layers, in order, all in `app/scan.sh`:
+
+1. **Private keys, deterministic.** A pure-bash pass redacts
+   `-----BEGIN ... PRIVATE KEY-----` and its body (END marker optional, so
+   truncated keys are covered), independent of gitleaks.
+2. **Context-aware rules, deterministic.** A value is redacted by what it
+   sits next to, whatever it looks like: after a key name containing
+   `secret`, `password`, `passwd`, `pwd`, `passphrase`, `token`, `api_key`,
+   `private_key` or `credential`; after a whole-segment alias (`PW`, `PWD`,
+   `PASS`, `CRED`, `PAT`, `client-key-data`); in `scheme://user:PASSWORD@host`
+   URLs and DSNs; in secret-ish query parameters; after `Authorization:`
+   `Basic|Bearer|Token|Digest`; in `Cookie:` / `Set-Cookie:` headers; in CLI
+   flags (`--password X`, `mysql -pX`, `redis-cli -a X`, `sshpass -p X`,
+   `docker login -p X`, `mc alias set A URL KEY SECRET`); in `.netrc` and
+   `.pgpass` lines; for a name/value pair split across lines (Kubernetes
+   `env`, Bitwarden-style JSON); and a few vendor shapes gitleaks lacks
+   (Azure client secrets, gcloud `ya29.` tokens, bcrypt hashes). ANSI colour
+   codes are ignored when matching. Placeholders (`${VAR}`, `<x>`, `***`,
+   `true`/`null`) and keys that merely name a secret (`secretName`,
+   `token_type`) are skipped. The bias is toward over-redaction.
+3. **gitleaks**, retried once on error, for vendor token formats.
+
+After redaction the script verifies that no confirmed secret survived and
+withholds the whole output if one did. A finding never comes back with the
+text unchanged.
+
+Two opt-in switches, both off by default:
+
+| Variable | Effect |
+|---|---|
+| `SECRET_GUARD_REDACT_KEY_IDS=1` | Also redact access-key and client IDs. Off by default: an ID is a semi-public identifier and the secret half is the enforced boundary. |
+| `SECRET_GUARD_ENV_VALUES=1` | Exact-match redact the values of environment variables whose names look secret (`*TOKEN*`, `*PASSWORD*`, `*SECRET*`, `PW`, ...). Only meaningful where the scanner shares the session's environment (the Claude Code plugin's hooks and fallback), not in this service's container. |
+
+Not detectable by any rule: a bare high-entropy value with no key name,
+prefix or surrounding context. Tests: `tests/redaction_selftest.py` (run in
+CI against the built image) and `tests/scan_options_test.sh`.
+
 ## Local metrics — purely personal, nothing transmitted
 
 Every `/v1/scan` call appends one JSON line per finding to

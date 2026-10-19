@@ -28,6 +28,9 @@ jobs:
           python-version: "3.12"
       - run: pip install ruff
       - run: ruff check app/ tests/
+      - name: scan.sh option tests
+        # Fabricated values only; works without gitleaks installed.
+        run: bash tests/scan_options_test.sh
 
   cve-scan-source:
     runs-on: ubuntu-latest
