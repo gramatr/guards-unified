@@ -161,10 +161,53 @@ def main() -> int:
         for fname, text in key_forms(pem).items():
             check(f"{kname}/{fname}", text, material, required=True)
 
-    # Connection strings: synthetic values, shape only (guards-coordination#1).
-    dsn_secret = "Tq7vN2xLm9Kd4RzP8wYb"
-    check("dsn/postgres", f"postgresql://svc:{dsn_secret}@db.internal:5432/app", [dsn_secret], False, "guards-coordination#1")
-    check("dsn/redis", f"redis://:{dsn_secret}@cache.internal:6379/0", [dsn_secret], False, "guards-coordination#1")
+    # Context rules (guards-coordination#1/#9). Every value is fabricated.
+    pw = "Tq7vN2xLm9Kd4RzP8wYb"
+    punct = "Qm4*Xw9%tL2!pR7=zN3^vB8"
+    cases = {
+        "dsn/postgres": f"postgresql://svc:{pw}@db.internal:5432/app?sslmode=require",
+        "dsn/redis-empty-user": f"redis://:{pw}@cache.internal:6379/0",
+        "dsn/amqp": f"amqps://u:{pw}@mq.internal:5671/vh",
+        "dsn/mongodb-srv": f"mongodb+srv://u:{pw}@c0.example.net/db",
+        "dsn/clickhouse": f"clickhouse://u:{pw}@ch.internal:8123/db",
+        "dsn/https-userinfo": f"https://u:{pw}@host.example.net/path",
+        "env/special-chars": "DB_PASSWORD=Xk9mQ4vT2p@Lw8RzN5bJc7Hd3",
+        "env/low-entropy": "DB_PASSWORD=hunter2",
+        "json/punctuation-secret-key": '{"secretKey": "' + punct + '", "user": "bob"}',
+        "yaml/quoted-with-spaces": 'password: "correct horse battery"',
+        "yaml/single-quoted": "client_secret: 'Tq7vN2xLm9Kd4RzP8wYb'",
+        "header/bearer": f"Authorization: Bearer {pw}",
+        "header/basic": "authorization: Basic YWRtaW46c2VjcmV0cGFzcw==",
+        "query/access-token": f"GET /x?access_token={pw}&page=2",
+        "aws/secret-access-key": "aws_secret_access_key = wJalrXUtnFEMIK7MDENGbPxRfiCYzzzzzzzzzzzz",
+    }
+    materials = {
+        "dsn/postgres": [pw], "dsn/redis-empty-user": [pw], "dsn/amqp": [pw], "dsn/mongodb-srv": [pw],
+        "dsn/clickhouse": [pw], "dsn/https-userinfo": [pw],
+        "env/special-chars": ["Xk9mQ4vT2p@Lw8RzN5bJc7Hd3"], "env/low-entropy": ["hunter2"],
+        "json/punctuation-secret-key": [punct], "yaml/quoted-with-spaces": ["correct horse battery"],
+        "yaml/single-quoted": [pw], "header/bearer": [pw], "header/basic": ["YWRtaW46c2VjcmV0cGFzcw=="],
+        "query/access-token": [pw], "aws/secret-access-key": ["wJalrXUtnFEMIK7MDENGbPxRfiCYzzzzzzzzzzzz"],
+    }
+    for cname, text in cases.items():
+        check(cname, text, materials[cname], required=True)
+
+    # Harmless lookalikes must come back byte-identical and not be flagged.
+    benign = {
+        "benign/placeholder": "password: ${DB_PASSWORD}",
+        "benign/k8s-secret-name": "secretName: db-credentials",
+        "benign/token-type": '{"token_type": "Bearer"}',
+        "benign/prose": "The secret to good tests is isolation.",
+        "benign/url-without-password": "https://github.com/gramatr/guards-unified",
+        "benign/token-count": "token_count: 1234",
+        "benign/plural-heading-code-span": "Query-string tokens: `access_token=`, presigned URLs",
+        "benign/begin-prose": "hello -----BEGIN of a story\nline2\n",
+    }
+    for bname, text in benign.items():
+        checked += 1
+        found, out = scanner.scan(text)
+        if found or out != text:
+            failures.append(f"{bname}: harmless text was flagged or altered")
 
     print(f"redaction self-test: {checked} cases, {len(failures)} failures, {len(gaps)} known gaps")
     for line in gaps:
