@@ -286,6 +286,16 @@ emit_unflagged() {
   fi
 }
 
+# SECRET_GUARD_SKIP_GITLEAKS=1: run only the deterministic passes above
+# (private-key, context rules, env values) and skip gitleaks. For callers that
+# already got gitleaks' answer from the warm service (/v1/scan/secret) and only
+# need the passes that need the local environment. Saves the gitleaks process
+# start (about 230 ms on a laptop, about 20 ms in the container).
+if [ "${SECRET_GUARD_SKIP_GITLEAKS:-0}" = "1" ]; then
+  emit_unflagged
+  exit 0
+fi
+
 if ! command -v gitleaks >/dev/null 2>&1; then
   echo "secret-guard: gitleaks not found on PATH, skipping scan (fail-open — unknown whether a secret is present)" >&2
   emit_unflagged

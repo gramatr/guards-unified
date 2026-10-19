@@ -75,6 +75,20 @@ jobs:
         # started because its injection model is a gated Hugging Face
         # download the public CI has no token for.
         run: python3 tests/redaction_selftest.py --image guards-unified:selftest
+      - name: Secret-only endpoint, called inside the built image
+        # The service cannot start in public CI (gated model), so call the
+        # route function directly. No models are loaded by this.
+        run: |
+          docker run --rm --entrypoint python guards-unified:selftest -c "
+          import main
+          r = main.scan_secret(main.ScanRequest(text='DB_PASSWORD=Tq7vN2xLm9Kd4RzP8wYb ok'))
+          f = r['findings']
+          assert len(f) == 1 and f[0]['type'] == 'secret' and f[0]['verdict'] == 'found', r
+          assert 'Tq7vN2xLm9Kd4RzP8wYb' not in r['redacted_text'], r
+          c = main.scan_secret(main.ScanRequest(text='nothing to see here'))
+          assert c['findings'][0]['verdict'] == 'clean' and c['redacted_text'] == 'nothing to see here', c
+          print('secret-only endpoint ok')
+          "
 
   flag-scheduled-failure:
     needs: [lint, cve-scan-source, cve-scan-image, redaction-selftest]

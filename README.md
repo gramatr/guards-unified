@@ -56,6 +56,19 @@ Response:
 }
 ```
 
+```
+POST /v1/scan/secret
+{"text": "..."}
+```
+
+The secret axis alone, same finding shape, `redacted_text` is the text with
+secrets redacted. Use it wherever secrets are what matter (tool output,
+commits, anything about to be published): it takes about 30 ms inside the
+container. The full `/v1/scan` also runs the PII and prompt-injection models,
+which cost about 0.25 s per KB (2 KB about 0.5 s, 24 KB about 5 s), are
+flag-only, and do not get faster by splitting the text across parallel
+requests, so the secret scan must never wait on them.
+
 `GET /health` for liveness.
 
 ## What the secret axis detects
@@ -90,6 +103,7 @@ Two opt-in switches, both off by default:
 
 | Variable | Effect |
 |---|---|
+| `SECRET_GUARD_SKIP_GITLEAKS=1` | Run only the deterministic passes (private key, context rules, env values) and skip gitleaks. For callers that already got gitleaks' answer from `/v1/scan/secret`. |
 | `SECRET_GUARD_REDACT_KEY_IDS=1` | Also redact access-key and client IDs. Off by default: an ID is a semi-public identifier and the secret half is the enforced boundary. |
 | `SECRET_GUARD_ENV_VALUES=1` | Exact-match redact the values of environment variables whose names look secret (`*TOKEN*`, `*PASSWORD*`, `*SECRET*`, `PW`, ...). Only meaningful where the scanner shares the session's environment (the Claude Code plugin's hooks and fallback), not in this service's container. |
 
