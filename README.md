@@ -93,7 +93,14 @@ Three layers, in order, all in `app/scan.sh`:
    codes are ignored when matching. Placeholders (`${VAR}`, `<x>`, `***`,
    `true`/`null`) and keys that merely name a secret (`secretName`,
    `token_type`) are skipped. The bias is toward over-redaction.
-3. **gitleaks**, retried once on error, for vendor token formats.
+3. **Base64 blobs.** A secret hiding under an innocent key name
+   (`{"conn": "cG9zdGdyZXM6Ly8..."}`, a Kubernetes Secret) is invisible to
+   key-name rules, so long base64-looking tokens are decoded and the
+   deterministic passes run on the decoded text; a hit redacts the whole
+   token. Hex digests, one-word tokens, binary decodes and ordinary-prose
+   decodes are skipped, at most 25 tokens are tried per scan, and the cost on
+   hash-heavy text is a few milliseconds. `SECRET_GUARD_B64=0` turns it off.
+4. **gitleaks**, retried once on error, for vendor token formats.
 
 After redaction the script verifies that no confirmed secret survived and
 withholds the whole output if one did. A finding never comes back with the
@@ -103,6 +110,7 @@ Two opt-in switches, both off by default:
 
 | Variable | Effect |
 |---|---|
+| `SECRET_GUARD_B64=0` | Turn off the base64-blob pass (on by default). |
 | `SECRET_GUARD_SKIP_GITLEAKS=1` | Run only the deterministic passes (private key, context rules, env values) and skip gitleaks. For callers that already got gitleaks' answer from `/v1/scan/secret`. |
 | `SECRET_GUARD_REDACT_KEY_IDS=1` | Also redact access-key and client IDs. Off by default: an ID is a semi-public identifier and the secret half is the enforced boundary. |
 | `SECRET_GUARD_ENV_VALUES=1` | Exact-match redact the values of environment variables whose names look secret (`*TOKEN*`, `*PASSWORD*`, `*SECRET*`, `PW`, ...). Only meaningful where the scanner shares the session's environment (the Claude Code plugin's hooks and fallback), not in this service's container. |
