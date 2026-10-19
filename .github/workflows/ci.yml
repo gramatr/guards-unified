@@ -27,7 +27,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install ruff
-      - run: ruff check app/
+      - run: ruff check app/ tests/
 
   cve-scan-source:
     runs-on: ubuntu-latest
@@ -57,8 +57,31 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
 
+  redaction-selftest:
+    # Runs against the image we would actually ship, not a dev checkout:
+    # every secret finding must come back redacted, never "found" with
+    # the text unchanged (guards-coordination#5). Synthetic keys are
+    # generated at run time; nothing real is involved.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build CPU image
+        run: docker build -f Dockerfile.cpu -t guards-unified:selftest .
+      - name: Start the service
+        run: |
+          docker run -d --name gu -p 127.0.0.1:8700:8700 guards-unified:selftest
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8700/health >/dev/null && exit 0
+            sleep 5
+          done
+          docker logs gu
+          echo "::error::service did not become healthy in 300s"
+          exit 1
+      - name: Redaction self-test
+        run: python3 tests/redaction_selftest.py --endpoint http://127.0.0.1:8700
+
   flag-scheduled-failure:
-    needs: [lint, cve-scan-source, cve-scan-image]
+    needs: [lint, cve-scan-source, cve-scan-image, redaction-selftest]
     if: always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
     steps:

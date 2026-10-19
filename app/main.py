@@ -56,6 +56,10 @@ logger = logging.getLogger("guards_unified")
 APP_DIR = Path(__file__).parent
 SCAN_SH = APP_DIR / "scan.sh"
 
+# Returned in place of the text whenever a confirmed secret finding could not
+# be redacted. Failing closed: never ship text we know contains a secret.
+REDACTION_WITHHELD = "***REDACTED:SECRET*** (secret-guard could not safely redact this output; withheld)"
+
 # Purely local, personal-use metrics — never transmitted anywhere, never
 # shared. Distinct from PROPOSAL.md's Track A (community telemetry) and
 # Track B (cpp-dwa governance telemetry), both still gated behind a
@@ -165,11 +169,19 @@ def _scan_secrets(text: str) -> dict:
                 findings = json.loads(raw)
         except (FileNotFoundError, json.JSONDecodeError):
             findings = []
+        detail = {"redacted_text": redacted_text, "rule_count": len(findings)}
+        if findings and redacted_text == text:
+            # Second line of defence behind scan.sh's own check: a
+            # confirmed finding must never ship back unchanged text
+            # (guards-coordination#5). Withhold instead.
+            logger.error("secret finding with unchanged redacted_text, withholding output")
+            detail["redacted_text"] = REDACTION_WITHHELD
+            detail["redaction_failed"] = True
         return {
             "type": "secret",
             "verdict": "found" if findings else "clean",
             "reason_code": [f"SECRET_{f.get('RuleID', 'UNKNOWN').upper()}" for f in findings] or None,
-            "detail": {"redacted_text": redacted_text, "rule_count": len(findings)},
+            "detail": detail,
         }
     except Exception as e:
         logger.exception("secret scan failed")
