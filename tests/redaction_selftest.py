@@ -200,6 +200,7 @@ def main() -> int:
         "benign/prose": "The secret to good tests is isolation.",
         "benign/url-without-password": "https://github.com/gramatr/guards-unified",
         "benign/token-count": "token_count: 1234",
+        "benign/plural-heading-code-span": "Query-string tokens: `access_token=`, presigned URLs",
         "benign/begin-prose": "hello -----BEGIN of a story\nline2\n",
     }
     for bname, text in benign.items():
