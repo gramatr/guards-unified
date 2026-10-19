@@ -1,0 +1,64 @@
+name: Pipeline check
+
+# Manual smoke test for the release pipeline's two out-of-band
+# prerequisites, without publishing a release or touching any real tag:
+#
+#   1. The ghcr.io package is linked to this repo and this repo has
+#      Write under the package's "Manage Actions access" (web-UI-only
+#      settings, lost if the repo is recreated). Tested by pushing a
+#      tiny empty image to a scratch tag with GITHUB_TOKEN.
+#   2. This repo is in the org's dgx-arm64-public runner group, so the
+#      arm64/GPU build can reach dgx-spark-01. Tested by running a
+#      trivial job on that runner.
+#
+# Never touches :cpu, :gpu, or any vX.Y.Z tag. workflow_dispatch only
+# (no pull_request trigger), so nobody without write access can run
+# code on the self-hosted runner from this public repo.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  registry-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push an empty scratch image
+        run: |
+          printf 'FROM scratch\nLABEL org.opencontainers.image.description="pipeline-check scratch image, safe to delete"\n' \
+            | docker buildx build --push -t ghcr.io/gramatr/guards-unified:link-check -
+
+      - name: Confirm it is readable back from the registry
+        run: docker buildx imagetools inspect ghcr.io/gramatr/guards-unified:link-check
+
+      - name: Delete the scratch tag (best effort)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          id="$(gh api "orgs/gramatr/packages/container/guards-unified/versions" --paginate \
+            --jq '.[] | select(.metadata.container.tags | index("link-check")) | .id' | head -n1)"
+          if [ -n "$id" ]; then
+            gh api -X DELETE "orgs/gramatr/packages/container/guards-unified/versions/$id"
+          else
+            echo "::warning::scratch tag not found for cleanup; delete :link-check by hand in the package UI (harmless, empty image)"
+          fi
+
+  arm64-runner:
+    runs-on: [self-hosted, ARM64, local-gpu]
+    steps:
+      - name: Show where we landed
+        run: |
+          echo "arch: $(uname -m)"
+          echo "host: $(hostname)"
+          test "$(uname -m)" = "aarch64"

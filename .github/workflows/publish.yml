@@ -29,14 +29,16 @@ name: Publish
 # arm64 now builds NATIVELY on dgx-spark-01, which is what makes this
 # safe to automate at all.
 #
-# Auth: ghcr.io/gramatr/guards-unified's container package predates
-# any Actions-based push and was never linked to this repo (GitHub
-# only exposes that link via the package's web UI, no REST API for
-# it -- confirmed 2026-10-19), so the default GITHUB_TOKEN gets
-# `permission_denied: write_package` even with `packages: write`
-# declared below. GHCR_PUBLISH_TOKEN (an org-admin PAT with
-# write:packages) works around that. Revisit if the package ever gets
-# linked via the UI -- GITHUB_TOKEN would then be preferable.
+# Auth: the default GITHUB_TOKEN, with `packages: write` below. This
+# only works because the ghcr.io/gramatr/guards-unified package is
+# linked to this repo AND this repo has Write under the package's
+# "Manage Actions access" -- both are web-UI-only settings (no REST
+# API), and both are lost if the repo is ever deleted and recreated
+# (this happened 2026-10-19). If a publish fails with
+# `permission_denied: write_package`, re-check those two settings
+# first; run the "Pipeline check" workflow to test them without
+# touching any release tag. Fallback if the link can't be made to
+# work: a PAT with write:packages stored as GHCR_PUBLISH_TOKEN.
 on:
   push:
     tags:
@@ -85,8 +87,8 @@ jobs:
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: bhandrigan
-          password: ${{ secrets.GHCR_PUBLISH_TOKEN }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Resolve Dockerfile for this variant
         id: file
@@ -141,8 +143,8 @@ jobs:
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: bhandrigan
-          password: ${{ secrets.GHCR_PUBLISH_TOKEN }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Resolve Dockerfile for this variant
         id: file
@@ -200,8 +202,8 @@ jobs:
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: bhandrigan
-          password: ${{ secrets.GHCR_PUBLISH_TOKEN }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Resolve version
         id: version

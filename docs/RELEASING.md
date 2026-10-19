@@ -100,3 +100,24 @@ live via the GitHub API (`dgx-spark-01` out of Default, `kub-ai-01`
 and the ARC pool untouched, still `allows_public_repositories: false`)
 before `publish.yml` was updated to actually use the runner
 (`runs-on: [self-hosted, ARM64, local-gpu]` in `build-arm64`).
+
+## If this repo is ever deleted and recreated
+
+Two settings live outside the code and are lost with the repo (this
+happened 2026-10-19). Neither has a REST API, so both are manual:
+
+1. **Package link.** In the `guards-unified` package page
+   (`github.com/orgs/gramatr/packages/container/guards-unified`):
+   *Connect repository* to this repo, then under the package's
+   *Settings → Manage Actions access* add this repo with the **Write**
+   role.
+2. **Runner group.** An org admin must add this repo to the
+   `dgx-arm64-public` runner group (org *Settings → Actions → Runner
+   groups*), or `build-arm64` waits forever for a runner.
+
+Then run the **Pipeline check** workflow (Actions tab → *Pipeline
+check* → *Run workflow*). It tests both settings without publishing a
+release or touching `:cpu`/`:gpu`: one job pushes an empty scratch image
+to `:link-check` using `GITHUB_TOKEN`, the other runs on the arm64
+runner. If the registry job fails with `permission_denied:
+write_package`, re-check step 1.
