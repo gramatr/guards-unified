@@ -24,7 +24,13 @@ FROM ghcr.io/gitleaks/gitleaks:v8.30.1 AS gitleaks
 
 FROM python:3.12-slim
 COPY --from=gitleaks /usr/bin/gitleaks /usr/bin/gitleaks
-RUN apt-get update && apt-get install -y --no-install-recommends jq bash \
+# upgrade, not just install -- python:3.12-slim's own bundled
+# packages (e.g. libssl3t64) get OS-level CVE patches independent of
+# anything this Dockerfile installs; found via CI's Trivy image scan
+# (CVE-2026-84782) on an arm64 build minutes after an amd64 build of
+# the same commit scanned clean, since Debian's security repo updated
+# in between -- the base image itself was never static.
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends jq bash \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/

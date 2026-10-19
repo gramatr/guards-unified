@@ -45,7 +45,9 @@ FROM ghcr.io/gitleaks/gitleaks:v8.30.1 AS gitleaks
 
 FROM python:3.12-slim
 COPY --from=gitleaks /usr/bin/gitleaks /usr/bin/gitleaks
-RUN apt-get update && apt-get install -y --no-install-recommends jq bash \
+# upgrade, not just install -- see Dockerfile.cpu's comment
+# (CVE-2026-84782 in libssl3t64, found the same way).
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends jq bash \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
