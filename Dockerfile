@@ -73,6 +73,10 @@ RUN uv pip install --python /app/.venv/bin/python \
       "en-core-web-lg @ https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl"
 
 COPY app/ ./
+# So a running container can report what it actually is via /about --
+# see app/main.py's GUARDS_UNIFIED_VERSION. Without this, a stale pull
+# is invisible from the outside: /health only ever says "ok."
+COPY VERSION ./
 RUN chmod +x scan.sh report.sh
 
 # The Llama 4 Community License requires a copy of the license text to

@@ -67,6 +67,18 @@ SCAN_SH = APP_DIR / "scan.sh"
 # it. One JSON line per finding: {ts, type, verdict, reason_code}.
 METRICS_PATH = Path(os.environ.get("METRICS_PATH", "/app/metrics/metrics.jsonl"))
 
+# Baked in at build time (Dockerfile COPYs the repo's VERSION file in)
+# so a running container can report what it actually is -- without
+# this, a stale pull is invisible from the outside: /health only ever
+# says "ok," whether or not it's ok on a 2026-10-17 image or today's.
+# Read once at import time, not per-request: it's immutable for the
+# life of the container.
+VERSION_PATH = APP_DIR / "VERSION"
+try:
+    GUARDS_UNIFIED_VERSION = VERSION_PATH.read_text().strip()
+except FileNotFoundError:
+    GUARDS_UNIFIED_VERSION = "unknown"
+
 
 def _log_metric(finding: dict) -> None:
     try:
@@ -117,6 +129,7 @@ def about() -> dict:
     not-yet-done requirement -- see README."""
     return {
         "service": "guards-unified",
+        "version": GUARDS_UNIFIED_VERSION,
         "model": injection_model.config.MODEL_ID,
         "attribution": "Built with Llama",
         "license_notice": "Llama 4 is licensed under the Llama 4 Community License, "
