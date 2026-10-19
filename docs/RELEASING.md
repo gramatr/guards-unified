@@ -101,6 +101,18 @@ and the ARC pool untouched, still `allows_public_repositories: false`)
 before `publish.yml` was updated to actually use the runner
 (`runs-on: [self-hosted, ARM64, local-gpu]` in `build-arm64`).
 
+### `v0.2.0` was never released
+
+The `v0.2.0` tag was pushed on 2026-10-19 before the work for that release was
+finished, and its Publish run was cancelled before `merge-multiarch`, so
+`:cpu` / `:gpu` never moved. The tag still points at an old commit (09ca1a7)
+and the cancelled run left two amd64-only images in the package,
+`cpu-amd64-v0.2.0` and `gpu-amd64-v0.2.0`, which contain **old code**. Do not
+use that tag or those images. The next release is `v0.2.1`. A published tag is
+never deleted and re-created here: it would rewrite a ref other people may have
+fetched, so a burned version number is simply skipped. The two stray images can
+be deleted in the package UI (select the versions tagged `*-v0.2.0`).
+
 ## If this repo is ever deleted and recreated
 
 Two settings live outside the code and are lost with the repo (this
