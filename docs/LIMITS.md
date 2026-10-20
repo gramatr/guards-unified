@@ -101,15 +101,45 @@ characters and fullwidth `=` and `:` are normalised across the whole output
 
 ## PII
 
-- **English only**, with 9 entity types by default: `PERSON`, `LOCATION`,
-  `EMAIL_ADDRESS`, `PHONE_NUMBER`, `US_SSN`, `US_PASSPORT`, `CREDIT_CARD`,
-  `IBAN_CODE`, `IP_ADDRESS`. `US_DRIVER_LICENSE` and `US_BANK_NUMBER` are off by
+- **English only**, with 9 entity types by default, from two sources:
+  - Presidio (a spaCy model, statistical): `PERSON` and `LOCATION`. A `PERSON`
+    span containing a digit, underscore, slash, `=`, `@` or `:` is treated as an
+    identifier and dropped.
+  - Deterministic checks in `app/pii_guard/validators.py` (since the release
+    after v0.2.6; `PII_ENGINE=presidio` restores Presidio for these for one
+    release): `CREDIT_CARD` (Luhn, a known issuer and length, or a grouped 4-4-4-4
+    or 4-6-5 shape), `IBAN_CODE` (country length and mod 97), `US_SSN`
+    (`ddd-dd-dddd` outside the never-issued ranges 000, 666, group 00, serial
+    0000; `9xx` areas are kept because ITINs and test data use them; nine bare
+    digits only straight after "SSN" or "social security"), `US_PASSPORT` (nine
+    digits, or a letter and eight, only straight after the word "passport"),
+    `PHONE_NUMBER` (North American numbers with parentheses or separators, `+`
+    international numbers with separators, compact `+E.164` away from the start of
+    a line), `IP_ADDRESS` (IPv4), `EMAIL_ADDRESS`.
+  - Not reported, on purpose: loopback (`127.0.0.0/8`) and `0.0.0.0`, the
+    broadcast address and netmasks; `noreply@`, `no-reply@` and `donotreply@`
+    senders; the `git` user of an ssh remote (`git@github.com:org/repo.git`);
+    `name@2x.png` asset names. Still reported: private-range IPv4 addresses
+    (an internal host address is what a leak looks like) and other role
+    mailboxes such as `security@` and `support@`.
+  - Known misses: phone numbers written as bare digits or in national formats
+    outside North America (`020 7946 0958`); IPv6; a card number with an unusual
+    issuer prefix, or written unseparated with a stray prefix; an IBAN written in
+    lower case; an SSN or passport number with no keyword and no dashes;
+    non-English text. Known false positives: an IPv4-shaped version string
+    (`1.2.3.4`), a 16-digit id that starts like a card issuer and passes Luhn by
+    chance (about one in ten of such ids; the issuer-and-length rule cuts this
+    to a small fraction), and the `PERSON`/`LOCATION` noise below.
+  - What changed: on the bake-off corpus (a fabricated set of 324 PII lines and
+    624 ordinary engineering lines, gramatr/guards-coordination#46) 43 of 1000
+    ordinary lines still raise a notice, down from 109; overall recall is 0.96.
+    All of what remains is Presidio reading an engineering word (Jenkins, Darwin,
+    Phoenix) as a person or a hex id as a place. Address recall (Presidio
+    `LOCATION`) is 0.69.
+  `US_DRIVER_LICENSE` and `US_BANK_NUMBER` are off by
   default (see [CONFIGURATION.md](CONFIGURATION.md): `PII_ENTITIES`) because their
   recognizers are pattern-only and matched run ids, timestamps and PR numbers. A
-  match must score at least 0.4 (`PII_MIN_SCORE`), and a `PERSON` span that
-  contains a digit, underscore or slash is treated as an identifier, not a person.
-  A phone number sits right at the 0.4 floor, and a plain SSN-shaped number can come
-  back as a phone number instead of an SSN: expect misses, as the next paragraph says.
+  Presidio match (`PERSON`, `LOCATION`) must score at least 0.4 (`PII_MIN_SCORE`).
   Dates, URLs, nationality or religious or political group, crypto addresses
   and everything else Presidio can find are excluded on purpose (they
   produced false positives on engineering text). Organisation names are not
@@ -118,7 +148,7 @@ characters and fullwidth `=` and `:` are normalised across the whole output
   real-world sample fell outside this entity set. That figure comes from that
   project's benchmark and was not reproduced here.
 - Name and place detection is statistical (a spaCy model); it has misses and
-  false positives. No score threshold is configured.
+  false positives. Only the 0.4 minimum score applies.
 - The service returns a redacted copy, but a caller that redacts wholesale is
   likely to damage ordinary technical output (git remotes read as emails,
   timestamps as phone numbers, tool names as people). The Claude Code plugin

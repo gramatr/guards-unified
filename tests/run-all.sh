@@ -39,6 +39,10 @@ echo "lint"
 command -v ruff >/dev/null 2>&1 && step "ruff app/ tests/" ruff check app/ tests/
 command -v shellcheck >/dev/null 2>&1 && step "shellcheck scripts" shellcheck -S warning app/scan.sh tests/*.sh
 
+echo "PII validators and merge logic (pure python; Presidio stubbed)"
+step "validators_test" python3 tests/validators_test.py
+step "pii_merge_test" python3 tests/pii_merge_test.py
+
 echo "API contract (models stubbed; needs fastapi + httpx)"
 if python3 -c "import fastapi, httpx" >/dev/null 2>&1; then
   step "api_contract_test" python3 tests/api_contract_test.py

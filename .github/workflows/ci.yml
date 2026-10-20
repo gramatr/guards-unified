@@ -31,6 +31,13 @@ jobs:
       - name: Dockerfile pins
         # No floating tags for external images (uv, base images).
         run: bash tests/dockerfile_pins_test.sh
+      - name: PII validators and merge logic
+        # Pure python: Presidio is stubbed, no models. Luhn, IBAN mod 97, SSN,
+        # phone, IPv4 and email checks with near-miss cases, and the overlap and
+        # redaction logic that combines them with Presidio's PERSON/LOCATION.
+        run: |
+          python3 tests/validators_test.py
+          python3 tests/pii_merge_test.py
       - name: API contract tests
         # The two models are stubbed (they are gated and heavy): this pins the
         # request size limits and what a failing axis does to the response.

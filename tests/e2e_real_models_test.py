@@ -123,16 +123,32 @@ def main() -> int:
 
     # 6. Engineering noise is not PII: identifiers and numbers in ordinary tool
     # output must not raise the PII verdict (shapes reported from a live session:
-    # run ids, epoch timestamps, PR numbers, 32-character hex ids, GUIDs, pod names).
+    # run ids, epoch timestamps, PR numbers, 32-character hex ids, GUIDs, pod
+    # names), plus the shapes the PII bake-off found (gramatr/guards-coordination#46):
+    # bare 10-digit json ids and offsets, a 16-digit id that fails Luhn, a
+    # base32-looking id, a SHA, a version, loopback and unspecified addresses, an
+    # ssh git remote, a no-reply sender. (Engineering words that spaCy reads as a person, such as
+    # Jenkins or Levenshtein, are a known Presidio miss left for phase 2: docs/LIMITS.md.)
     noise = [
         "gh run view 39442632382 --json status",
         "merged PR #75 and PR #80, run 39437619279",
         "ts 1760972400123",
+        "ts=1760972400 elapsed=12",
+        '{"id": 4155550132, "ok": true}',
+        "offset=4155550132 limit=50",
         "zone d6696ab46cfaeabacc4431436d1b74a7 updated",
         "subscription 4f2a9c1e-7b3d-4e58-9a61-0c8d2b5e7f13 tenant",
+        "commit 3f786850e387550fdab836ed7e6dc881de23001b",
+        "ref 4111111111111112 queued",
+        "ref AB12CDE3FGH4JKL5MNO6PQ ok",
         "fix(coder): remove flag from the Qwen coder (#3226)",
         "pod chi-clickhouse-v2-clickhouse-v2-0-0-0 ready",
         "cpu=573.00% mem=2.145GiB / 4GiB",
+        "v0.2.5 build 20261020",
+        "curl http://localhost:8627/healthz  (127.0.0.1)",
+        "bind 0.0.0.0:8161",
+        "origin  git@github.com:gramatr/guards-unified.git (fetch)",
+        "Co-Authored-By: a bot <noreply@example.invalid>",
     ]
     problems = []
     for text in noise:
@@ -141,12 +157,19 @@ def main() -> int:
             problems.append(f"{text!r} flagged as PII ({v.get('pii')!r})")
     record("engineering noise is not flagged as PII", problems)
 
-    # 7. ...while hyphenated real names, emails, IPs and card numbers still are.
+    # 7. ...while hyphenated real names, emails, IPs, cards, IBANs, SSNs and
+    # structured phone numbers still are. Fabricated: reserved or test values.
     real = [
         "Contact Alice Example at alice@example.invalid",
         "Mary-Jane Smith-Jones signed the form",
         "server at 10.11.0.230 answered",
         "card 4111 1111 1111 1111 was declined",
+        "IBAN GB82 WEST 1234 5698 7654 32 on file",  # guards:synthetic
+        "ssn 078-05-1120",  # guards:synthetic
+        "call 415-555-0132 tomorrow",
+        "call +44 7700 900123 tomorrow",
+        "passport number: 912345678",
+        "Dr. Wei Zhang will present on Friday",
     ]
     problems = []
     for text in real:
@@ -154,6 +177,15 @@ def main() -> int:
         if v.get("pii") != "found":
             problems.append(f"{text!r} not flagged as PII ({v.get('pii')!r})")
     record("real PII is still flagged", problems)
+
+    # 8. Every reported span is redacted, even where two kinds sit side by side.
+    text = "Author: Priya Okonkwo <priya.okonkwo@example.invalid> from 10.11.0.230, card 4111 1111 1111 1111"
+    problems, body, v = scan("redaction", text)
+    out = body.get("redacted_text", "")
+    for material in ("priya.okonkwo@example.invalid", "10.11.0.230", "4111 1111 1111 1111"):
+        if material in out:
+            problems.append(f"{material!r} survived in redacted_text")
+    record("every structured span is redacted", problems)
 
     failed = [r for r in results if not r[1]]
     print(f"\n{len(results) - len(failed)}/{len(results)} passed")

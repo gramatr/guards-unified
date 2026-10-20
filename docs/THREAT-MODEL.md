@@ -213,12 +213,14 @@ Each row: the control that exists, its documented limit, and the evidence.
 
 ### T9. Personal data in tool output
 
-- **Control.** Presidio finds 9 English entity types by default and the plugin flags them
-  in the first 2 KB of Bash output; values are left intact by default.
+- **Control.** Presidio (`PERSON`, `LOCATION`) and deterministic validators (cards, IBANs,
+  SSNs, passports, phone numbers, IPv4, email) find 9 English entity types by default and
+  the plugin flags them in the first 2 KB of Bash output; values are left intact by default.
 - **Limit.** English only; statistical misses and false positives; most real-world
   PII falls outside the entity set (a 63% figure from the predecessor project's
   benchmark, not reproduced here); flag only unless `PII_GUARD_MODE=redact`.
-- **Evidence.** Code: `app/pii_guard/engine.py`. No automated test exercises the
+- **Evidence.** Code: `app/pii_guard/engine.py`, `app/pii_guard/validators.py` (unit-tested
+  in CI, `tests/validators_test.py`). No automated test exercises the
   real PII engine; the API contract is tested with it stubbed
   (`tests/api_contract_test.py`).
 

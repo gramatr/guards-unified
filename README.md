@@ -256,7 +256,9 @@ The short version; the long version with the evidence is
   data, with no override language). Measured recall on that case was 6%
   (InjecAgent, n=200, real tool-output injections). A `clean` injection
   verdict is not a safety guarantee for content an agent is about to act on.
-- **PII detection covers 9 Presidio entity types by default, English only.** Not all PII.
+- **PII detection covers 9 entity types by default, English only.** Not all PII.
+  Presidio finds `PERSON` and `LOCATION`; deterministic checks (Luhn, IBAN mod 97,
+  issued SSN ranges, structured phone numbers, IPv4, email) find the rest.
 - **Injection is flag-only.** The service never alters text for it. PII
   comes with a best-effort redacted copy, but callers decide what to do with
   either.
