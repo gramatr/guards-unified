@@ -2,7 +2,7 @@
 
 Covers both packages of the guards line, `guards-unified` (the server image,
 this repository) and [`claude-plugin-guards`](https://github.com/gramatr/claude-plugin-guards)
-(the Claude Code plugin), from the first tagged release to v0.2.8.
+(the Claude Code plugin), from the first tagged release to v0.2.9.
 
 ## How the versions work
 
@@ -32,21 +32,23 @@ What was hardened, what was loosened and why is in
 
 ---
 
-## [Unreleased]
+## [0.2.9] - 2026-10-20
 
 ### guards-unified
 
 - Fixed: a key that names an identifier or reference of a secret is no longer redacted when the descriptor (`id`, `ref`, `arn`, `name`, `type`, `path`, `file`, `version`, `count`, `ttl`, `namespace`, `store`, `manager`, `provider`, `url`) is the last segment but not adjacent to the credential word: `client_secret_bws_id`, `clientSecretBwsId`, `CLIENT_SECRET_BWS_ID`, `secret_vault_id`, `token_store_ref`, `credential_provider_arn`. This applies to the context pass (`secret-lead-in`) and to gitleaks' `generic-api-key` findings, which are dropped for such a key so the two passes agree. A key whose last segment is the credential or a value word (`AUTH_TOKEN`, `db_password`, `api_secret`, `client_secret_value`, `secret_key`) still redacts, as does `secretValid` (a camelCase `Id` must be capitalized). Found when a publish guard denied a commit of a test fixture holding a vault secret id.
 - Fixed: ordinary source code is no longer redacted by the context pass. An UNQUOTED value that is a call (`createSignedToken(userId)`), an identifier or member chain (`accessToken`, `this.cfg.apiToken`), `await`/`new` before a call, or a type (`string`, `Promise<TokenSet>`) is not a credential when the line is code: after `:` or a spaced `=`, and either after a declaration or modifier keyword (`const`, `readonly`, `private`, `val`, ...), or a call, or a primitive type, or an identifier with a separator or camelCase and no digits plus code punctuation or a trailing `,` `;` `)` `}`. In a real commit of TypeScript, 32 of 685 added lines were redacted and 30 of them are now left alone; the 2 left are string literals assigned to token-named constants, which stay secrets. Unspaced `NAME=value` (env, shell, `export`, `readonly NAME=...`), INI and YAML values, CLI flags, quoted values and plain words such as `hunter2x` are unchanged. The 1007-text bake-off corpus (PII-focused) is unchanged.
 - Added: self-test cases both ways (reference keys must pass unchanged, last-segment keys must redact).
+- Fixed: the code-shape rule is stricter, after the plugin's CI (which runs without gitleaks) showed a password inside a JSON string no longer being redacted. A key inside a quoted string (JSON string content, a shell string, a log message in quotes) is text, not code. Braces and commas alone no longer count as "the line is code": a line needs a semicolon, `=>` or `) {`, or the key must sit in property position (first on its line, or after `{`, `(`, `[` or `,`). Log lines, sentences and issue bodies that contain a key, a colon and an identifier-looking word still redact. A type name or camelCase variable needs humps with at least two lowercase letters (no digits for a variable), so random mixed-case values are never read as code.
+- Fixed: a long unbroken run of name characters (a base64 blob, a hash, a bundle without spaces) no longer makes the context pass quadratic. Runs of 256 or more are masked for the context rules and restored afterwards; a secret after one, or a long run as the value of a key, is still redacted. A 20 KB run scanned in 9.7 s before and in 0.06 s after, which is what made the publish guard deny commits with "did not finish in time". Ordinary text is unaffected (27 KB of minified JSON: 70 ms before, 96 ms after).
 
 ### claude-plugin-guards
 
 - Changed: a publish-guard deny now says where each match is (up to 5: the command text, a named file, or the staged diff with file and line), with each line shown as the scanner redacts it and never the value, and states what `guards:synthetic` covers (added lines of a commit's staged diff only) and that `GUARDS_ALLOW_PUBLISH_SECRETS=1` works only from the environment Claude Code started in (claude-plugin-guards#84).
 - Fixed: the publish guard scanned the wrong repository after `cd 'quoted dir'`, `pushd` or `GIT_DIR=`; saw a stale index for `git add ... && git commit` in one command (a marker added since the last add did not count, a new file was not seen); did not inspect `git -c k=v commit`; and read ` -a` inside a commit message as the flag.
-- Fixed: the code-shape rule is stricter, after the plugin's CI (which runs without gitleaks) showed a password inside a JSON string no longer being redacted. A key inside a quoted string (JSON string content, a shell string, a log message in quotes) is text, not code. Braces and commas alone no longer count as "the line is code": a line needs a semicolon, `=>` or `) {`, or the key must sit in property position (first on its line, or after `{`, `(`, `[` or `,`). Log lines, sentences and issue bodies that contain a key, a colon and an identifier-looking word still redact. A type name or camelCase variable needs humps with at least two lowercase letters (no digits for a variable), so random mixed-case values are never read as code.
-- Fixed: a long unbroken run of name characters (a base64 blob, a hash, a bundle without spaces) no longer makes the context pass quadratic. Runs of 256 or more are masked for the context rules and restored afterwards; a secret after one, or a long run as the value of a key, is still redacted. A 20 KB run scanned in 9.7 s before and in 0.06 s after, which is what made the publish guard deny commits with "did not finish in time". Ordinary text is unaffected (27 KB of minified JSON: 70 ms before, 96 ms after).
 - Added: the MCP server carries `instructions`, four `guards://guide/...` resources and a `check_before_publish` tool that runs the publish guard offline.
+- Changed (user-visible): a line marked `guards:synthetic` is still denied in a commit if it matches a sure-thing vendor shape: a private-key header, an AWS access key id, a GitHub token, a Slack token or a live Stripe or OpenAI-style key. Documented example ids and values containing EXAMPLE or FAKE, JWT-shaped strings and ordinary fixtures are still accepted by the marker. Build vendor-shaped fakes at run time.
+- Added: MCP tools `explain_block`, `prepare_publication`, `guards_status`, `mark_synthetic` (refuses vendor-shaped tokens and private-key headers) and `report_false_positive`; MCP prompts `fix_a_block`, `safe_pr_body` and `fake_fixture_checklist`; a `guards-for-agents` skill; and `docs/AGENTS-GUIDE.md` with a snippet for a project's CLAUDE.md or AGENTS.md. No tool disables or weakens a guard, and no tool returns a matched value.
 
 ## [0.2.8] - 2026-10-20
 
