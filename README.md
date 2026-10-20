@@ -1,156 +1,236 @@
 # guards-unified
 
-One image, one process, one API — secret-guard, pii-guard, and
-injection-guard's detection logic combined behind a single `POST
-/v1/scan` endpoint, instead of three separate Docker containers on
-three separate ports (that's [gramatr/guards-stack](https://github.com/gramatr/guards-stack)).
+One image, one process, one API: secret, PII and prompt-injection detection
+behind a single `POST /v1/scan` endpoint (and a secret-only `POST
+/v1/scan/secret`), instead of three separate containers on three separate
+ports.
+
+Current version: see [`VERSION`](VERSION) (also served by `GET /about`).
+What changed in each release: [CHANGELOG.md](CHANGELOG.md).
+
+| Read this | For |
+|---|---|
+| [docs/API.md](docs/API.md) | Routes, request and response shapes, reason codes, when `redacted_text` can be trusted |
+| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Every environment variable the server reads, budgets and limits |
+| [docs/LIMITS.md](docs/LIMITS.md) | What it does not catch |
+| [docs/TRADEOFFS.md](docs/TRADEOFFS.md) | What was hardened, what was loosened, and why |
+| [docs/RELEASING.md](docs/RELEASING.md) | Cutting a release |
 
 ## Why this exists
 
-Each of the three sibling projects — [secret-guard](https://github.com/gramatr/secret-guard),
-[pii-guard](https://github.com/gramatr/pii-guard),
-[injection-guard](https://github.com/gramatr/injection-guard) — is its
-own repo with its own Dockerfile, license, and HTTP daemon. That's the
-right shape for each project owning its own detection logic. It is
-**not** the right shape for a caller that always wants all three
-checked on the same text, every time: calling three separate endpoints
-for one logical "is this content safe to act on" question is three
-round trips and three client-side call sites for no benefit, when the
-caller never wanted a partial answer anyway.
+[secret-guard](https://github.com/gramatr/secret-guard),
+[pii-guard](https://github.com/gramatr/pii-guard) and
+[injection-guard](https://github.com/gramatr/injection-guard) are each their
+own project with their own Dockerfile, licence and HTTP daemon. That is the
+right shape for each project owning its detection logic. It is not the right
+shape for a caller that always wants all three checked on the same text:
+that is three round trips and three call sites for one question, "is this
+content safe to act on".
 
-This repo vendors each project's actual detection code (not a
-re-implementation — the real `pii_guard`/`injection_guard` packages and
-secret-guard's `scan.sh`/`report.sh`) into one FastAPI app, so **any**
-caller — a Claude Code hook, an MCP server, a different harness
-entirely, a future grāmatr platform service — makes one call and gets
-back a result for all three axes at once.
+This repo vendors each project's detection code (the `pii_guard` and
+`injection_guard` packages, and secret-guard's `scan.sh` and `report.sh`) into
+one FastAPI app, so any caller (a Claude Code hook, an MCP server, another
+harness) makes one call and gets a result for all three axes at once. The
+[guards-stack](https://github.com/gramatr/guards-stack) repo is the
+three-separate-containers alternative.
 
 ## Three independent axes, not a pipeline
 
-secret-guard, pii-guard, and injection-guard protect against three
-unrelated things (credential leaks, personal-data leaks,
-jailbreak/override attempts). `/v1/scan` runs all three unconditionally
-on the *same original text* — none gates, waits on, or depends on
-another. Secret and PII findings redact (exact character spans);
-injection only ever flags, because its judgment is a whole-chunk
-probability with no span to blank — redacting it risks destroying
-legitimate content, so it only prepends a warning for the caller to
-act on.
+Secrets, personal data and prompt injection are three unrelated problems.
+`POST /v1/scan` runs all three unconditionally on the same original text;
+none gates, waits on or depends on another. Secret and PII findings come with
+a redacted copy of the text. Injection only ever flags: its judgement is a
+whole-chunk probability with no span to blank, and redacting it risks
+destroying legitimate content.
 
 ## API
 
-```
-POST /v1/scan
-{"text": "..."}
-```
+Four routes. The full contract is in [docs/API.md](docs/API.md).
 
-Response:
-```json
-{
-  "findings": [
-    {"type": "secret", "verdict": "found|clean|error", "reason_code": ["SECRET_<gitleaks rule>"] | null, "detail": {...}},
-    {"type": "pii", "verdict": "found|clean|error", "reason_code": ["PII_<entity type>"] | null, "detail": {...}},
-    {"type": "injection", "verdict": "malicious|clean|error", "reason_code": ["INJECTION_OVERRIDE_OR_JAILBREAK"] | null, "detail": {"score": 0.0, "chunks_scanned": 1}}
-  ],
-  "redacted_text": "secrets then PII redacted in sequence; injection never alters the text"
-}
-```
+| Route | What it does |
+|---|---|
+| `POST /v1/scan` | All three axes. Body `{"text": "..."}`. Returns `findings` (always `[secret, pii, injection]`) and `redacted_text` (secrets, then PII; injection never alters text). |
+| `POST /v1/scan/secret` | The secret axis alone, same finding shape. About 30 ms in the container, because it does not run the PII and injection models. Use it wherever secrets are what matter (tool output, commits, anything about to be published). |
+| `GET /health` | Liveness. Always `{"status": "ok"}`; it does not check the models. |
+| `GET /about` | `service`, `version` (the `VERSION` file baked into the image), `model`, and the Llama licence attribution. Use it to confirm which release a running container is. |
 
-```
-POST /v1/scan/secret
-{"text": "..."}
-```
+The PII and injection models cost about 0.25 s per KB of text (2 KB about
+0.5 s, 24 KB about 5 s, as measured by the maintainers; not guaranteed), and
+do not get faster by splitting the text across parallel requests. A caller
+that cannot wait on them should call `/v1/scan/secret` and decide separately
+how much text to send for the other two axes. The server itself always scans
+whatever it is sent.
 
-The secret axis alone, same finding shape, `redacted_text` is the text with
-secrets redacted. Use it wherever secrets are what matter (tool output,
-commits, anything about to be published): it takes about 30 ms inside the
-container. The full `/v1/scan` also runs the PII and prompt-injection models,
-which cost about 0.25 s per KB (2 KB about 0.5 s, 24 KB about 5 s), are
-flag-only, and do not get faster by splitting the text across parallel
-requests, so the secret scan must never wait on them.
-
-`GET /health` for liveness.
+**There is no authentication and no request size limit.** Bind it to
+loopback or an equally private network. See
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ## What the secret axis detects
 
-Three layers, in order, all in `app/scan.sh`:
+Five layers, run in this order, all in `app/scan.sh` (a bash script the
+service shells out to; `gitleaks` and `jq` must be on `PATH`):
 
 1. **Private keys, deterministic.** A pure-bash pass redacts
-   `-----BEGIN ... PRIVATE KEY-----` and its body (END marker optional, so
-   truncated keys are covered), independent of gitleaks.
-2. **Context-aware rules, deterministic.** A value is redacted by what it
-   sits next to, whatever it looks like: after a key name containing
-   `secret`, `password`, `passwd`, `pwd`, `passphrase`, `token`, `api_key`,
-   `private_key` or `credential`; after a whole-segment alias (`PW`, `PWD`,
-   `PASS`, `CRED`, `PAT`, `client-key-data`); in `scheme://user:PASSWORD@host`
-   URLs and DSNs; in secret-ish query parameters; after `Authorization:`
-   `Basic|Bearer|Token|Digest`; in `Cookie:` / `Set-Cookie:` headers; in CLI
-   flags (`--password X`, `mysql -pX`, `redis-cli -a X`, `sshpass -p X`,
-   `docker login -p X`, `mc alias set A URL KEY SECRET`); in `.netrc` and
-   `.pgpass` lines; for a name/value pair split across lines (Kubernetes
-   `env`, Bitwarden-style JSON); and a few vendor shapes gitleaks lacks
-   (Azure client secrets, gcloud `ya29.` tokens, bcrypt hashes). ANSI colour
-   codes are ignored when matching. Placeholders (`${VAR}`, `<x>`, `***`,
-   `true`/`null`) and keys that merely name a secret (`secretName`,
-   `token_type`) are skipped. The bias is toward over-redaction.
-3. **Base64 blobs.** A secret hiding under an innocent key name
-   (`{"conn": "cG9zdGdyZXM6Ly8..."}`, a Kubernetes Secret) is invisible to
-   key-name rules, so long base64-looking tokens are decoded and the
-   deterministic passes run on the decoded text; a hit redacts the whole
-   token. Hex digests, one-word tokens, binary decodes and ordinary-prose
-   decodes are skipped, at most 25 tokens are tried per scan, and the cost on
-   hash-heavy text is a few milliseconds. `SECRET_GUARD_B64=0` turns it off.
-4. **gitleaks**, retried once on error, for vendor token formats.
+   `-----BEGIN ... PRIVATE KEY-----` and the body that follows. The END marker
+   is optional, so truncated keys are covered. It does not depend on gitleaks
+   and runs even if gitleaks or `jq` is missing. Rule ID `private-key-fallback`.
+2. **Context-aware rules, deterministic.** A value is redacted by what it sits
+   next to, whatever it looks like. Matching is done on a copy of the text
+   with ANSI colour codes and zero-width characters removed and fullwidth `=`
+   and `:` mapped to ASCII. Rules:
+   - after a key name containing `secret`, `password`, `passwd`, `pwd`,
+     `passphrase`, `token`, `api_key`, `private_key` or `credential`
+     (`secret-lead-in`); the value must be at least 4 characters, quoted or bare;
+   - after a whole-segment alias (`PW`, `PWD`, `PASS`, `CRED`, `CREDS`, `PAT`,
+     `client-key-data`); `compass` or `bypass` do not match;
+   - the one YAML next-line form: a line that is only `password:` (optionally
+     `- ` before it) followed by an indented line holding one bare token
+     (below);
+   - the password in `scheme://user:PASSWORD@host` URLs and DSNs
+     (`url-password`) and in secret-ish query parameters (`url-query-secret`);
+   - the credential after an `Authorization` header scheme (Basic, Bearer,
+     Token or Digest; 8 or more characters; `auth-header`) and the value of
+     `Cookie` and `Set-Cookie` headers (`cookie-header`);
+   - credentials given on a command line (`cli-password-flag`): the value
+     after `--password`, `--token`, `--secret`, `--api-key` and similar flags,
+     and the password argument of `mysql`, `redis-cli`, `sshpass`,
+     `docker login` and `mc alias set`; the `--flag=value` form is handled by
+     the key rules;
+   - `.netrc` and `.pgpass` lines (`netrc-password`, `pgpass-password`);
+   - a name/value pair split across lines: Kubernetes `env`, Bitwarden-style
+     JSON (`k8s-env-value`, `json-key-value`);
+   - a few vendor shapes the default gitleaks ruleset lacks: Azure client
+     secrets, gcloud `ya29.` and `1//0` tokens, bcrypt hashes
+     (`azure-client-secret`, `gcloud-oauth-token`, `bcrypt-hash`).
 
-After redaction the script verifies that no confirmed secret survived and
-withholds the whole output if one did. A finding never comes back with the
-text unchanged.
+   The bias is toward over-redaction: a leaked credential costs more than a
+   redacted harmless value. See [what is deliberately skipped](#what-the-context-rules-deliberately-skip).
+3. **Base64 blobs, on by default.** A secret hiding under an innocent key
+   name (`{"conn": "cG9zdGdyZXM6Ly8..."}`, a Kubernetes Secret) is invisible
+   to key-name rules, so long base64-looking tokens are decoded and the
+   deterministic passes run on the decoded text. A hit redacts the whole token
+   (`base64-secret`). Hex digests, one-word tokens, binary decodes and
+   decodes that are mostly non-printable are skipped; at most 25 candidate
+   tokens (44 to 65,536 characters each) are tried per scan.
+   `SECRET_GUARD_B64=0` turns it off.
+4. **Environment-value pass, opt-in.** With `SECRET_GUARD_ENV_VALUES=1`, the
+   values of exported environment variables whose names look secret are
+   redacted wherever they appear (`env-value`). Off by default and
+   meaningless inside this service's container; see the switches below.
+5. **gitleaks**, for vendor token formats (default ruleset, v8.30.1 in the
+   image). Retried once if it exits non-zero.
 
-Two opt-in switches, both off by default:
+After redaction the script re-checks that no confirmed gitleaks secret (or
+16-character line of one) survives, and withholds the whole output if one
+does. A finding never comes back with the text unchanged.
 
-| Variable | Effect |
+### What the context rules deliberately skip
+
+- Placeholders and references: values starting with `$`, `<`, `{`, `%(`, `***`
+  or `...`; values that are only a run of `x`, `*`, `.`, `-` or `_`; and
+  (case-insensitively) the exact words `true`, `false`, `null`, `none`, `nil`,
+  `yes`, `no`, `undefined`, `empty`, `redacted`, `changeme`, `example`, `todo`,
+  `tbd`, `string`, `password`, `secret`, `token`.
+- Keys that only describe a secret rather than hold one, for example
+  `secretName`, `token_type`, `token_count` or `secretKeyRef`: a secret, token
+  or credential word followed by name, ref, id, type, path, file, version,
+  count, ttl, namespace, store, manager, provider, url or arn.
+- A value that is an absolute path which exists on the machine running the
+  scan. The `PWD` lines that `env`, `printenv` and `export -p` print are
+  the working directory, not a password. A path that does not exist, or a
+  non-path value under a `PWD` key, is still redacted. The check runs where
+  `scan.sh` runs, so a path that exists only on a client's machine is not
+  recognised by the service.
+- A plural heading (`tokens`, `secrets`, `passwords`, `credentials`,
+  `passphrases`) followed by a markdown code span.
+- A heading that ends in a keyword and a colon, followed by prose on the next
+  line. The key rules allow blanks after the `:` or `=`, never a newline.
+- Access-key IDs and client IDs, unless `SECRET_GUARD_REDACT_KEY_IDS=1`.
+
+### The narrow YAML next-line rule
+
+YAML puts a scalar on the line after its key:
+
+```
+password:
+  <the-value>
+```
+
+The rule matches only when the key line holds nothing but the key (optionally
+`- ` before it) and a colon, and the next line is indented and holds a single
+token of at least 4 characters with no colon. It does not match a heading
+followed by a command or sentence, a nested key (`secret:` then `name: x`), a
+multi-word line, or two keys in a row. Residual: a keyword-and-colon heading
+followed by exactly one word on the next line cannot be told apart from a YAML
+scalar by pattern, so that word is redacted. The alias keys (`PW`, `PASS`,
+...) are not covered by the next-line form.
+
+### Switches
+
+These are environment variables read by `scan.sh`. In the service they are
+process environment of the container (`docker run -e NAME=value`); there is no
+per-request parameter.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `SECRET_GUARD_B64` | on | `0` turns off the base64-blob pass. |
+| `SECRET_GUARD_SKIP_GITLEAKS` | off | `1` runs only the deterministic passes (private key, context rules, base64, and env values if enabled) and skips gitleaks. For callers that already got gitleaks' answer from `/v1/scan/secret`. |
+| `SECRET_GUARD_REDACT_KEY_IDS` | off | `1` also redacts access-key and client IDs. Off because an ID is a semi-public identifier and the secret half is the enforced boundary. |
+| `SECRET_GUARD_ENV_VALUES` | off | `1` exact-match redacts the values of environment variables whose names look secret (`*TOKEN*`, `*PASSWORD*`, `*SECRET*`, `PW`, ...; names ending `_FILE`, `_PATH`, `_DIR`, `_URL`, `_URI`, `_NAME`, `_ID`, `_TYPE`, `_HOST`, `_PORT`, `_USER` are skipped, as are values under 8 characters, placeholders, existing paths, `PWD` and `OLDPWD`). Only meaningful where the scanner shares the session's environment, such as a Claude Code plugin's local hooks. In this service it would match the container's own environment, so leave it off. |
+
+Plugin-side settings such as `FLAG_MAX_BYTES` and `FLAG_BUDGET` (how much of
+a tool output is sent for the PII and injection notices, and how long to wait
+for them) belong to the Claude Code plugin's hook, not to this server. This
+server has no such settings and scans everything it is sent.
+
+Not detectable by any rule: a bare high-entropy value with no key name, prefix
+or surrounding context. The full list of known misses is in
+[docs/LIMITS.md](docs/LIMITS.md).
+
+### Tests
+
+`tests/run-all.sh` runs everything CI can: lint, the option tests with and
+without gitleaks on `PATH`, and the redaction self-test. The self-test
+(`tests/redaction_selftest.py`) asserts that a `found` secret verdict always
+changes the text and leaves no fragment behind, that each required shape is
+redacted, and that harmless lookalikes come back byte-identical. It runs in CI
+against the built CPU image's `scan.sh` and secret route; it does not start the
+full service, because the injection model is a gated download. So the PII and
+injection axes are not tested end to end in this repo's CI.
+
+## Failure behaviour: fail-open vs fail-closed
+
+Each choice below is deliberate.
+
+| Situation | Behaviour |
 |---|---|
-| `SECRET_GUARD_B64=0` | Turn off the base64-blob pass (on by default). |
-| `SECRET_GUARD_SKIP_GITLEAKS=1` | Run only the deterministic passes (private key, context rules, env values) and skip gitleaks. For callers that already got gitleaks' answer from `/v1/scan/secret`. |
-| `SECRET_GUARD_REDACT_KEY_IDS=1` | Also redact access-key and client IDs. Off by default: an ID is a semi-public identifier and the secret half is the enforced boundary. |
-| `SECRET_GUARD_ENV_VALUES=1` | Exact-match redact the values of environment variables whose names look secret (`*TOKEN*`, `*PASSWORD*`, `*SECRET*`, `PW`, ...). Only meaningful where the scanner shares the session's environment (the Claude Code plugin's hooks and fallback), not in this service's container. |
+| A confirmed secret could not be removed from the output | **Closed.** The text is replaced by `***REDACTED:SECRET*** (secret-guard could not safely redact this output; withheld)`. If `scan.sh` produced unchanged text for a non-empty finding list, `main.py` does the same and sets `detail.redaction_failed: true`. |
+| The secret scan takes longer than 15 s | **Open.** The text is left unscanned; the secret finding has verdict `error`, reason code `SECRET_SCAN_TIMEOUT` and `detail: {"error": "timeout"}`. Withholding the output instead was tried and dropped: it takes a user's whole result away to guard a rare case. |
+| `gitleaks` or `jq` missing, or gitleaks fails twice | **Open for the gitleaks layer.** The deterministic layers still run; a line is logged. |
+| The PII or injection model raises on a request | That axis reports verdict `error` with the exception message in `detail`; the other axes still run. A caller must not read one axis's `error` as "the whole request is clean". |
+| A model fails to load at startup | The process does not start. |
+| Writing a metrics line fails | Logged and ignored. |
 
-Not detectable by any rule: a bare high-entropy value with no key name,
-prefix or surrounding context. Tests: `tests/redaction_selftest.py` (run in
-CI against the built image) and `tests/scan_options_test.sh`.
+## Local metrics: nothing transmitted
 
-## Local metrics — purely personal, nothing transmitted
-
-Every `/v1/scan` call appends one JSON line per finding to
-`$METRICS_PATH` (default `/app/metrics/metrics.jsonl` inside the
-container — mount a host volume there to persist it):
+Both `POST /v1/scan` and `POST /v1/scan/secret` append one JSON line per
+finding to `$METRICS_PATH` (default `/app/metrics/metrics.jsonl` inside the
+container; mount a host volume there to persist it). `/v1/scan` writes three
+lines per call, `/v1/scan/secret` writes one.
 
 ```json
 {"ts": "2026-10-18T02:28:07.396580+00:00", "type": "secret", "verdict": "found", "reason_code": ["SECRET_GITHUB-PAT"]}
 ```
 
-**Only `ts`/`type`/`verdict`/`reason_code` — never the scanned text,
-never `redacted_text`, never anything from `detail`.** Confirmed by
-running real scans containing a name, an email, and a live-shaped
-token and reading the resulting file directly: none of it appears
-anywhere in the metrics output.
+Only `ts`, `type`, `verdict` and `reason_code`: never the scanned text, never
+`redacted_text`, nothing from `detail`. The file is not rotated, so it grows
+without bound. It is a local file on whatever host runs the container;
+nothing is sent anywhere.
 
-This is deliberately **not** the same thing as the community/platform
-telemetry proposed in `gramatr/guards-stack`'s `PROPOSAL.md` (Track A,
-opt-in community reporting; Track B, `cpp-dwa`'s internal governance
-telemetry) — both of those are still gated behind a legal/product
-review that hasn't happened, and neither is implemented anywhere. This
-writes to a local file on whatever host runs the container and goes
-nowhere else; it needs no review because nothing leaves this process.
-
-To mount it, **pre-create the host directory first and `chmod 777`
-it** — the container runs as a non-root user (fixed UID/GID 1000,
-confirmed GPU device access still works for this user on real
-hardware before this shipped), and a bind-mounted directory Docker
-auto-creates on first run comes back owned by root, which silently
-breaks every metrics write (confirmed by testing: the scan itself
-still succeeds, fail-open, but zero lines land — nothing erred loudly
-to tell you):
+The container runs as a non-root user (fixed UID and GID 1000). A bind-mounted
+directory that Docker creates on first run is owned by root, which silently
+breaks every metrics write (the scan itself still succeeds, so nothing errs
+loudly). Pre-create the host directory and make it writable:
 
 ```
 mkdir -p ~/.local/share/gramatr-guards/metrics
@@ -158,47 +238,42 @@ chmod 777 ~/.local/share/gramatr-guards/metrics
 docker run ... -v ~/.local/share/gramatr-guards/metrics:/app/metrics ...
 ```
 
-`chmod 777` rather than trying to match the container's UID exactly —
-simpler and host-portable, and the only thing that directory ever
-holds is the metrics file above, which carries no scanned text, so the
-broad permission costs nothing real. Directory write permission (not
-file ownership) governs whether you can delete files inside it, so
-this also fixes the original problem: no more `sudo` needed to manage
-the metrics file.
+`chmod 777` is the simple, host-portable choice rather than matching UID
+1000 exactly; on a shared host, `chown 1000:1000` the directory instead. The
+file holds no scanned text. The `claude-plugin-guards` self-heal script creates
+this directory for you.
 
-(Already wired into the Compose files in `claude-plugin-guards` and
-`platform-guards`, which pre-create and `chmod` this directory
-automatically — see those repos' own `guards-selfheal.sh` or README.)
+## Scope: read before relying on this
 
-## Scope — read before relying on this for anything
+The short version; the long version with the evidence is
+[docs/LIMITS.md](docs/LIMITS.md).
 
-- **Injection detection is jailbreak/override detection only.** Per
-  injection-guard's own `RESEARCH-SPIKE-classification.md` and Meta's
-  own model card for the underlying Llama Prompt Guard 2 model: this
-  does **not** reliably catch indirect injection (malicious instructions
-  embedded in data with no override language). Measured recall on that
-  case is 6% (InjecAgent, n=200, real tool-output injections). A
-  `"clean"` injection verdict is not a safety guarantee for content an
-  agent is about to act on.
-- **PII detection covers Presidio's configured entity set only** — not
-  all PII. ~63% of PII in one real-world sample fell outside this
-  entity set in pii-guard's own benchmark.
-- **Fails explicit, not open.** If a sub-detector errors, that
-  finding's `verdict` is `"error"` with the exception message in
-  `detail` — the other two axes still run and report normally. A
-  caller must not treat one axis's failure as "the whole request is
-  clean."
+- **Injection detection is jailbreak and override detection only.** It does
+  not reliably catch indirect injection (malicious instructions embedded in
+  data, with no override language). Measured recall on that case was 6%
+  (InjecAgent, n=200, real tool-output injections). A `clean` injection
+  verdict is not a safety guarantee for content an agent is about to act on.
+- **PII detection covers 11 Presidio entity types, English only.** Not all PII.
+- **Injection is flag-only.** The service never alters text for it. PII
+  comes with a best-effort redacted copy, but callers decide what to do with
+  either.
+- **Secrets are the one hard rule.** Everything else is best-effort.
 
 ## Building and running
 
-Two Dockerfiles, published as two image tags:
+Two Dockerfiles, published as two image tags. Both are multi-arch manifests
+(`linux/amd64` and `linux/arm64`), built natively per architecture and merged.
 
 | Tag | File | Use when |
 |---|---|---|
-| `ghcr.io/gramatr/guards-unified:cpu` | `Dockerfile.cpu` | No GPU, or never will be one — smaller image, no CUDA packages |
-| `ghcr.io/gramatr/guards-unified:gpu` | `Dockerfile` | A GPU might be available now or later — falls back to CPU automatically via `INJECTION_GUARD_DEVICE=auto` when none is visible |
+| `ghcr.io/gramatr/guards-unified:cpu` | `Dockerfile.cpu` | No GPU, or never will be one: smaller image, no CUDA packages |
+| `ghcr.io/gramatr/guards-unified:gpu` | `Dockerfile` | A GPU might be available now or later: falls back to CPU automatically via `INJECTION_GUARD_DEVICE=auto` when none is visible |
 
-Both tags are real multi-arch manifests (`linux/amd64` + `linux/arm64`).
+`:cpu` and `:gpu` float to the latest release. For reproducible deployments
+pin `cpu-vX.Y.Z` or `gpu-vX.Y.Z`; per-architecture tags
+(`cpu-amd64-vX.Y.Z`, `cpu-arm64-vX.Y.Z`, ...) also exist and are what the
+merge step combines. Releases are described in
+[docs/RELEASING.md](docs/RELEASING.md).
 
 ```
 docker build -t guards-unified:local -f Dockerfile.cpu .   # or -f Dockerfile for GPU-capable
@@ -207,16 +282,28 @@ docker run -p 127.0.0.1:8700:8700 \
   guards-unified:local
 ```
 
-The injection-guard model (`meta-llama/Llama-Prompt-Guard-2-86M`) is
-gated on Hugging Face — the env file must carry `HF_TOKEN=<token with
-the Llama 4 Community License accepted>`. See injection-guard's own
-README, "The HF_TOKEN problem," for how to get one.
+Publish the port on `127.0.0.1` as shown. The server listens on `0.0.0.0`
+inside the container, has no authentication and no request size limit, and
+receives raw text that may contain secrets.
 
-**Multi-arch GPU builds: build natively per architecture, never
-cross-build CUDA under QEMU emulation** — a CUDA-bundled torch install
-under emulation is extremely slow (abandoned after it ran far longer
-than a native build). Build on real hardware for each arch, then
-combine:
+The injection model (`meta-llama/Llama-Prompt-Guard-2-86M`) is gated on
+Hugging Face. The first start needs network access and an `HF_TOKEN=<token>`
+environment variable (the standard Hugging Face variable, read by the
+`transformers` library) for an account that has accepted the Llama 4 Community
+License, for example in the env file above. The model is cached under
+`HF_HOME` (`/app/.cache/huggingface`). If either model fails to load, the
+process does not start.
+
+Sizing: the PII and injection models are CPU-bound without a GPU. The
+`claude-plugin-guards` Compose file runs the image with a 4 GB memory limit
+(its comments record that 2 GB was OOM-killed) and a generous CPU allowance;
+use it as a starting point and measure on your hardware.
+
+**Multi-arch GPU builds: build natively per architecture, never cross-build
+CUDA under QEMU emulation.** A CUDA-bundled torch install under emulation is
+extremely slow. CI builds amd64 on a GitHub-hosted runner and arm64 on a
+self-hosted arm64 GPU runner, then merges the two (see
+[docs/RELEASING.md](docs/RELEASING.md)). By hand:
 
 ```
 # on an amd64 host with an NVIDIA GPU:
@@ -228,64 +315,52 @@ docker buildx imagetools create -t ghcr.io/gramatr/guards-unified:gpu \
   ghcr.io/gramatr/guards-unified:gpu-amd64 ghcr.io/gramatr/guards-unified:gpu-arm64
 ```
 
-Verified end to end on real hardware, both architectures, not just "it
-builds": all three detectors load at startup (gitleaks binary via
-`scan.sh`, Presidio's full recognizer set, the gated Llama model), and
-`POST /v1/scan` returns correct per-finding verdicts and a
-correctly-chained `redacted_text` against real test input — on an
-x86_64 host with an NVIDIA RTX 4090 (confirmed GPU execution via the
-`"Loading ... on cuda"` startup log line), and separately, natively,
-on an aarch64 host with an NVIDIA GB10 (Grace-Blackwell) GPU, same
-confirmation. The standard PyPI `torch` wheel's CUDA support on GB10
-was an open question before this was tested — it works, confirmed, not
-assumed.
+The GPU path was exercised on an x86_64 host with an NVIDIA RTX 4090 and,
+natively, on an aarch64 host with an NVIDIA GB10 GPU, when the multi-arch
+build was first introduced (v0.1.x). It has not been re-verified for every
+release.
 
-**macOS / Apple Silicon**: the `:gpu`/`:cpu` multi-arch manifests both
-resolve to the `arm64` image on an Apple Silicon Mac and run correctly
-— but **without acceleration**. This build's GPU path is CUDA-only
-(NVIDIA); Apple's GPU is Metal, and Docker Desktop on macOS does not
-pass the host GPU through to its Linux VM at all (no `--gpus`
-equivalent for Metal). `INJECTION_GUARD_DEVICE=auto` correctly falls
-back to CPU on Mac, silently. Real Metal acceleration would require
-two separate things neither of which exist yet: an MPS branch in
-`injection_guard/model.py`'s device resolution (straightforward —
-MPS ships in the standard macOS torch wheel already), and running the
-process natively on the Mac host instead of inside Docker (MPS is
-unreachable from inside any container on macOS, same reasoning as the
-CUDA passthrough limit above).
+**macOS and Apple Silicon.** Both multi-arch manifests resolve to the `arm64`
+image on an Apple Silicon Mac and run correctly, but without acceleration: the
+GPU path is CUDA-only (NVIDIA), and Docker Desktop on macOS does not pass the
+host GPU through to its Linux VM. `INJECTION_GUARD_DEVICE=auto` falls back to
+CPU. Real Metal acceleration would need an MPS branch in
+`injection_guard/model.py`'s device resolution and running the process
+natively on the Mac host instead of in Docker. Neither exists today.
 
-## Relationship to the other guard repos
+## Relationship to the other repos
 
 - [secret-guard](https://github.com/gramatr/secret-guard),
-  [pii-guard](https://github.com/gramatr/pii-guard),
-  [injection-guard](https://github.com/gramatr/injection-guard) remain
-  the source of truth for each detector's own logic, licensing, and
-  standalone daemon — this repo vendors their code, it doesn't replace
-  or fork their projects. A fix to detection logic belongs upstream in
-  the relevant project, then gets re-vendored here.
+  [pii-guard](https://github.com/gramatr/pii-guard) and
+  [injection-guard](https://github.com/gramatr/injection-guard) are the
+  standalone projects this code was vendored from. `app/scan.sh` here has since
+  diverged from secret-guard's: it carries the rules and passes described above
+  that the standalone copy lacks, so for the current script this repo is the
+  reference.
 - [guards-stack](https://github.com/gramatr/guards-stack) is the
-  three-separate-containers Compose deployment. This repo is an
-  alternative backend for the same three detectors, not a replacement —
-  callers that already depend on guards-stack's three ports are
-  unaffected.
-- [claude-plugin-guards](https://github.com/gramatr/claude-plugin-guards)
-  is the Claude Code integration (hooks + MCP server) and is the first
-  consumer of this image's `/v1/scan` endpoint.
+  three-separate-containers Compose deployment, an alternative backend for the
+  same three detectors.
+- [claude-plugin-guards](https://github.com/gramatr/claude-plugin-guards) is
+  the Claude Code integration (hooks and an MCP server) and the first consumer
+  of this image's endpoints. The two packages are one product and move in
+  lockstep: same version, same tag. The rule is written in
+  [docs/RELEASING.md](docs/RELEASING.md#versions-move-in-lockstep-with-claude-plugin-guards).
+  The plugin carries a vendored copy of `app/scan.sh` for its local fallback
+  passes.
 
-## License
+Issues are disabled on this repository.
 
-MIT for this repository's own code — see `LICENSE`. The vendored
-`pii_guard` and `injection_guard` packages carry their own upstream
-licenses (MIT and MIT respectively).
+## Licence
 
-**Built with Llama.** The model weights `injection_guard` loads at
-runtime (`meta-llama/Llama-Prompt-Guard-2-86M`) are licensed separately
-under Meta's Llama 4 Community License — this image carries the same
-redistribution obligation as `injection-guard`'s own repo, satisfied
-here the same way: `NOTICE` and `THIRD_PARTY_LICENSES/
-LLAMA4_COMMUNITY_LICENSE.txt` ship with this repo (byte-identical to
-`injection-guard`'s own copies, same model, same license), and the
-running service's `GET /about` endpoint carries the same attribution
-at runtime. A product website/about page display is a separate,
-not-yet-done requirement, same open item `injection-guard`'s own
-README tracks for itself.
+MIT for this repository's own code; see `LICENSE`. The vendored `pii_guard`
+and `injection_guard` packages carry their own upstream licences (MIT and MIT
+respectively).
+
+**Built with Llama.** The model weights `injection_guard` loads at runtime
+(`meta-llama/Llama-Prompt-Guard-2-86M`) are licensed separately under Meta's
+Llama 4 Community License. This image carries the same redistribution
+obligation as `injection-guard`'s own repo, satisfied the same way: `NOTICE`
+and `THIRD_PARTY_LICENSES/LLAMA4_COMMUNITY_LICENSE.txt` ship with this repo
+and inside the image under `/app/licenses/`, and the running service's
+`GET /about` carries the attribution at runtime. A product website or about
+page display is a separate, not-yet-done requirement.
