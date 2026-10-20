@@ -2,7 +2,7 @@
 
 Covers both packages of the guards line, `guards-unified` (the server image,
 this repository) and [`claude-plugin-guards`](https://github.com/gramatr/claude-plugin-guards)
-(the Claude Code plugin), from the first tagged release to v0.2.6.
+(the Claude Code plugin), from the first tagged release to v0.2.7.
 
 ## How the versions work
 
@@ -32,7 +32,7 @@ What was hardened, what was loosened and why is in
 
 ---
 
-## [Unreleased]
+## [0.2.7] - 2026-10-20
 
 ### guards-unified
 
