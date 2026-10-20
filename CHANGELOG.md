@@ -32,6 +32,14 @@ What was hardened, what was loosened and why is in
 
 ---
 
+## [Unreleased]
+
+### guards-unified
+
+- Changed: Presidio's `PERSON` and `LOCATION` results go through new output filters (`app/pii_guard/filters.py`). A `LOCATION` with `=`, `_`, a run of four or more digits, a run of twelve or more hex characters or no letter, or a lone lowercase word, is dropped; so is a `PERSON` that is a lone lowercase word or only names from a built-in list of about 300 software and tool names (Jenkins, Grafana Tempo, Kafka Streams, `kube`, `arn`). A title before the span (`Dr. Jenkins`) keeps it. Measured in the published image, ordinary engineering lines flagged: 43 to 11 in 1000 on the bake-off corpus, 64 to 32 in 1000 on a held-out set with other tool names; person and address recall unchanged on both. A person whose whole name is a listed word, mentioned alone, is no longer flagged (docs/TRADEOFFS.md).
+- Added: `PII_IGNORE_NAMES` (comma-separated, case-insensitive) adds names to the built-in list.
+- Added: unit tests for the filters (run in CI) and noise shapes in the end-to-end test.
+
 ## [0.2.7] - 2026-10-20
 
 ### guards-unified

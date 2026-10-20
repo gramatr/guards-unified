@@ -14,7 +14,7 @@ blanking them is as safe as secret-guard's precise-span secret redaction.
 
 import logging
 
-from pii_guard import validators
+from pii_guard import filters, validators
 from pii_guard.config import ENGINE, ENTITIES, LANGUAGE, MIN_SCORE
 
 logger = logging.getLogger("pii_guard")
@@ -95,7 +95,7 @@ def _analyze_validators(text: str) -> tuple[str, list]:
         presidio = [
             validators.Span(r.entity_type, r.start, r.end, r.score)
             for r in results
-            if not _is_identifier_not_a_person(text, r)
+            if not _is_identifier_not_a_person(text, r) and filters.keep_result(text, r)
         ]
     spans = merge_spans(presidio, validators.find_pii(text, [e for e in ENTITIES if e in validators.KINDS]))
     return redact(text, spans), spans
@@ -105,7 +105,7 @@ def _analyze_presidio(text: str) -> tuple[str, list]:
     results = _analyzer.analyze(
         text=text, language=LANGUAGE, entities=ENTITIES, score_threshold=MIN_SCORE
     )
-    results = [r for r in results if not _is_identifier_not_a_person(text, r)]
+    results = [r for r in results if not _is_identifier_not_a_person(text, r) and filters.keep_result(text, r)]
     anonymized = _anonymizer.anonymize(text=text, analyzer_results=results)
     return anonymized.text, [validators.Span(r.entity_type, r.start, r.end, r.score) for r in results]
 

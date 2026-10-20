@@ -42,6 +42,7 @@ command -v shellcheck >/dev/null 2>&1 && step "shellcheck scripts" shellcheck -S
 echo "PII validators and merge logic (pure python; Presidio stubbed)"
 step "validators_test" python3 tests/validators_test.py
 step "pii_merge_test" python3 tests/pii_merge_test.py
+step "filters_test" python3 tests/filters_test.py
 
 echo "API contract (models stubbed; needs fastapi + httpx)"
 if python3 -c "import fastapi, httpx" >/dev/null 2>&1; then

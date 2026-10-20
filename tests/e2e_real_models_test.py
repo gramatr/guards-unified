@@ -127,8 +127,10 @@ def main() -> int:
     # names), plus the shapes the PII bake-off found (gramatr/guards-coordination#46):
     # bare 10-digit json ids and offsets, a 16-digit id that fails Luhn, a
     # base32-looking id, a SHA, a version, loopback and unspecified addresses, an
-    # ssh git remote, a no-reply sender. (Engineering words that spaCy reads as a person, such as
-    # Jenkins or Levenshtein, are a known Presidio miss left for phase 2: docs/LIMITS.md.)
+    # ssh git remote, a no-reply sender. Tool names that spaCy reads as a person
+    # (Jenkins, Grafana Tempo) and key=value or hex strings it reads as a place
+    # are dropped by pii_guard.filters. (Names of tools that are not in the list,
+    # such as Levenshtein, are still a known miss: docs/LIMITS.md.)
     noise = [
         "gh run view 39442632382 --json status",
         "merged PR #75 and PR #80, run 39437619279",
@@ -149,6 +151,13 @@ def main() -> int:
         "bind 0.0.0.0:8161",
         "origin  git@github.com:gramatr/guards-unified.git (fetch)",
         "Co-Authored-By: a bot <noreply@example.invalid>",
+        "Jenkins build #20 finished in 598s",
+        "Jupyter Lab kernel Python 3 ready",
+        "Grafana Tempo ingester flush complete",
+        "GET /healthz 200 5ms user-agent=kube-probe/1.27",
+        "pad_token_id=1 vocab_size=32000 max_position_embeddings=131072",
+        "trace_id=00a26bcca6ccdca785345f37ce4f053d span_id=bd2977b1259b6951",
+        "arn:aws:s3:::bucket-b6cafdb1/logs/2026/10/03/032f6433b7b15ef9.gz",
     ]
     problems = []
     for text in noise:
@@ -170,6 +179,8 @@ def main() -> int:
         "call +44 7700 900123 tomorrow",
         "passport number: 912345678",
         "Dr. Wei Zhang will present on Friday",
+        "Dr. Jenkins will present on Friday",  # a title keeps a name that is also a tool
+        "Please ship it to 2280 Birchwood Drive, Westbrook, ME 04092.",
     ]
     problems = []
     for text in real:

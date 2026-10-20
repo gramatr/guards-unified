@@ -34,10 +34,12 @@ jobs:
       - name: PII validators and merge logic
         # Pure python: Presidio is stubbed, no models. Luhn, IBAN mod 97, SSN,
         # phone, IPv4 and email checks with near-miss cases, and the overlap and
-        # redaction logic that combines them with Presidio's PERSON/LOCATION.
+        # redaction logic that combines them with Presidio's PERSON/LOCATION, and the
+        # filters that drop tool names and identifiers from those two kinds.
         run: |
           python3 tests/validators_test.py
           python3 tests/pii_merge_test.py
+          python3 tests/filters_test.py
       - name: API contract tests
         # The two models are stubbed (they are gated and heavy): this pins the
         # request size limits and what a failing axis does to the response.

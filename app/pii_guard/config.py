@@ -46,3 +46,13 @@ except ValueError:
 ENGINE = os.environ.get("PII_ENGINE", "validators").strip().lower()
 if ENGINE not in ("validators", "presidio"):
     ENGINE = "validators"
+
+# Extra names to ignore when Presidio reads them as a PERSON (PII_IGNORE_NAMES,
+# comma-separated, case-insensitive), on top of the built-in list in
+# pii_guard.ignore_names. For a tool or product name your team uses that is
+# read as a person.
+IGNORE_NAMES_EXTRA = frozenset(
+    " ".join(n.split()).casefold()
+    for n in os.environ.get("PII_IGNORE_NAMES", "").split(",")
+    if n.strip()
+)
