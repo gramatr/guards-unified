@@ -278,6 +278,27 @@ def main() -> int:
     for cname, text in last_segment_secrets.items():
         check(cname, text, [sv], required=True)
 
+    # Unquoted values in env, INI, YAML and shell contexts, and string literals
+    # assigned to a token-named constant, stay secrets even though the code-shape
+    # rule exists. Short, lowercase and digit-bearing words are included on purpose.
+    config_secrets = {
+        "config/env-word-digit": ("DB_PASSWORD=hunter2x", ["hunter2x"]),  # guards:synthetic
+        "config/yaml-word-digit": ("password: hunter2x", ["hunter2x"]),  # guards:synthetic
+        "config/yaml-word": ("password: correcthorse", ["correcthorse"]),  # guards:synthetic
+        "config/ini-spaced": ("password = swordfish9", ["swordfish9"]),  # guards:synthetic
+        "config/dotenv-spaced": ("token = abc123xyz", ["abc123xyz"]),  # guards:synthetic
+        "config/shell-export": ("export API_TOKEN=abc123xyz", ["abc123xyz"]),  # guards:synthetic
+        "config/shell-readonly": ("readonly API_TOKEN=abc123xyz", ["abc123xyz"]),  # guards:synthetic
+        "config/shell-then-command": ("API_TOKEN=abc123xyz; curl -H x https://example.invalid", ["abc123xyz"]),  # guards:synthetic
+        "config/yaml-trailing-comma": ("  password: hunter2x,", ["hunter2x"]),  # guards:synthetic
+        "config/yaml-mixed-case": ("secret: Hunter2Pass", ["Hunter2Pass"]),  # guards:synthetic
+        "config/code-string-literal-const": (f'  const SUBJECT_TOKEN = "{sv}";', [sv]),  # guards:synthetic
+        "config/code-string-literal-prop": (f"  const subjectToken = '{sv}';", [sv]),  # guards:synthetic
+        "config/code-quoted-in-object": (f'body: JSON.stringify({{ subject_token: "{sv}", provider: P }}),', [sv]),  # guards:synthetic
+    }
+    for cname, (text, material) in config_secrets.items():
+        check(cname, text, material, required=True)
+
     # Harmless lookalikes must come back byte-identical and not be flagged.
     benign = {
         "benign/placeholder": "password: ${DB_PASSWORD}",
@@ -294,6 +315,20 @@ def main() -> int:
         "benign/ref-key-vault-id": 'secret_vault_id = "vault-ref-9a1"',  # guards:synthetic
         "benign/ref-key-store-ref": 'token_store_ref: "store-ref-77"',  # guards:synthetic
         "benign/ref-key-provider-arn": 'credential_provider_arn: "arn:aws:iam::123456789012:role/example"',  # guards:synthetic
+        # Ordinary source code: an unquoted value that is a call, an identifier,
+        # a member chain or a type is not a credential. Fabricated lookalikes.
+        "benign/code-property-identifier": "    accessToken: accessToken,",  # guards:synthetic
+        "benign/code-property-member": "    refresh_token: tokens.refreshToken,",  # guards:synthetic
+        "benign/code-property-in-object": "  const body = { subject_token: subjectToken, grant: 'x' };",  # guards:synthetic
+        "benign/code-argument-member": "  await exchange({ token: this.cfg.apiToken });",  # guards:synthetic
+        "benign/code-const-call": "  const callbackToken = createSignedToken(userId, 300);",  # guards:synthetic
+        "benign/code-const-await-call": "  const bearerToken = await getToken(ctx);",  # guards:synthetic
+        "benign/code-private-readonly-call": "  private readonly authToken = loadToken();",  # guards:synthetic
+        "benign/code-kotlin-val-call": "  val apiToken = tokenProvider.fetch()",  # guards:synthetic
+        "benign/code-type-annotation": "  readonly subject_token: string",  # guards:synthetic
+        "benign/code-type-annotation-semicolon": "  access_token: string;",  # guards:synthetic
+        "benign/code-generic-type": "  token: Promise<TokenSet>;",  # guards:synthetic
+        "benign/code-return-object": "  return { idToken: idToken };",  # guards:synthetic
         "benign/ref-key-secretkeyref": 'secretKeyRef: {name: db-creds, key: password}',
         "benign/plural-heading-code-span": "Query-string tokens: `access_token=`, presigned URLs",
         "benign/base64-sentence": '{"note": "' + base64.b64encode(b"The quick brown fox jumps over the lazy dog and keeps running far away").decode() + '"}',
