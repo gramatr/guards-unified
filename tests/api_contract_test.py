@@ -51,7 +51,11 @@ def _stub(name, **attrs):
 _stub("pii_guard")
 _stub("pii_guard.engine", analyze_and_redact=_analyze_and_redact)
 _stub("injection_guard")
-_stub("injection_guard.model", classify=lambda t: {"malicious": False, "score": 0.99, "chunks_scanned": 1})
+_stub(
+    "injection_guard.model",
+    classify=lambda t: {"malicious": False, "score": 0.99, "chunks_scanned": 1},
+    config=types.SimpleNamespace(MODEL_ID="stub/model", MODEL_REVISION="stub-revision"),
+)
 
 main = importlib.import_module("main")  # after the stubs are in place
 
@@ -69,6 +73,10 @@ def check(label, ok, detail=""):
 def verdicts(resp):
     return {f["type"]: f["verdict"] for f in resp.json()["findings"]}
 
+
+print("about")
+r = client.get("/about")
+check("/about reports the model and the pinned revision", r.status_code == 200 and r.json().get("model") == "stub/model" and r.json().get("model_revision") == "stub-revision", r.text[:120])
 
 print("size limits")
 r = client.post("/v1/scan", json={"text": "x" * 2001})

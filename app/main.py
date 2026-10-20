@@ -159,6 +159,7 @@ def about() -> dict:
         "service": "guards-unified",
         "version": GUARDS_UNIFIED_VERSION,
         "model": injection_model.config.MODEL_ID,
+        "model_revision": injection_model.config.MODEL_REVISION,
         "attribution": "Built with Llama",
         "license_notice": "Llama 4 is licensed under the Llama 4 Community License, "
                            "Copyright © Meta Platforms, Inc. All Rights Reserved.",

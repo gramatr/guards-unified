@@ -79,6 +79,7 @@ whose models failed to load never starts, so it would not answer at all).
   "service": "guards-unified",
   "version": "0.2.3",
   "model": "meta-llama/Llama-Prompt-Guard-2-86M",
+  "model_revision": "a8ded8e697ce7c355e395a0df51f94adb4a2fd27",
   "attribution": "Built with Llama",
   "license_notice": "Llama 4 is licensed under the Llama 4 Community License, Copyright © Meta Platforms, Inc. All Rights Reserved.",
   "license_url": "https://www.llama.com/llama4/license/"
