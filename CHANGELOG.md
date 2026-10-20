@@ -32,6 +32,16 @@ What was hardened, what was loosened and why is in
 
 ---
 
+## [Unreleased]
+
+### guards-unified
+
+- Changed: the structured PII kinds no longer come from Presidio. `CREDIT_CARD`, `IBAN_CODE`, `US_SSN`, `US_PASSPORT`, `PHONE_NUMBER`, `IP_ADDRESS` and `EMAIL_ADDRESS` are found by deterministic checks in the new `app/pii_guard/validators.py` (Luhn, IBAN country length and mod 97, SSN issued ranges, a visible phone structure, a parseable IPv4, an email pattern); Presidio keeps `PERSON` and `LOCATION`. Bare 10-digit ids, epoch timestamps and run ids are no longer read as phone numbers or passports. The entity names, the `/v1/scan` response shape and the `<ENTITY_TYPE>` placeholders in `redacted_text` are unchanged. Measured on the fabricated bake-off corpus (gramatr/guards-coordination#46) inside the published image: 43 ordinary engineering lines in 1000 flagged (was 109), overall recall 0.96, phone precision 0.69 to 1.00 and recall 0.93 to 1.00.
+- Changed: a `PERSON` span containing `=`, `@` or `:` is now dropped as an identifier, in addition to a digit, underscore or slash.
+- Changed: loopback and unspecified IPv4 addresses (`127.0.0.0/8`, `0.0.0.0`), the broadcast address and netmasks are not reported; `noreply@` / `no-reply@` / `donotreply@` senders and the `git` user of an ssh remote (`git@github.com:org/repo.git`) are not reported as email. Private-range IPv4 addresses and other role mailboxes (`security@`, `support@`) are still reported.
+- Added: `PII_ENGINE=presidio` restores the previous all-Presidio behavior for one release; it is removed after that.
+- Added: unit tests for the validators and the merge/redaction logic (Presidio stubbed, run in CI), and noise and true-positive cases in the end-to-end test.
+
 ## [0.2.6] - 2026-10-20
 
 ### guards-unified

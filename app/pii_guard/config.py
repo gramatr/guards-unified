@@ -37,3 +37,12 @@ try:
     MIN_SCORE = float(os.environ.get("PII_MIN_SCORE", "0.4"))
 except ValueError:
     MIN_SCORE = 0.4
+
+# Which engine finds the structured kinds. "validators" (default): PERSON and
+# LOCATION from Presidio, CREDIT_CARD / IBAN_CODE / US_SSN / US_PASSPORT /
+# PHONE_NUMBER / IP_ADDRESS / EMAIL_ADDRESS from the deterministic checks in
+# pii_guard.validators. "presidio": Presidio's own recognizers for everything,
+# the behavior before v0.3.0, kept for one release (PII_ENGINE=presidio).
+ENGINE = os.environ.get("PII_ENGINE", "validators").strip().lower()
+if ENGINE not in ("validators", "presidio"):
+    ENGINE = "validators"

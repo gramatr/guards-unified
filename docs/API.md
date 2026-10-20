@@ -124,7 +124,7 @@ Every finding is `{type, verdict, reason_code, detail}`.
 {"redacted_text": "...", "entities": [{"entity_type": "EMAIL_ADDRESS", "start": 12, "end": 30, "score": 1.0}]}
 ```
 
-`entities` carry type, character offsets and Presidio's score. They never carry
+`entities` carry type, character offsets and a score (Presidio's for `PERSON` and `LOCATION`, a fixed 0.8 to 1.0 for the structured kinds found by the validators). They never carry
 the matched text. `redacted_text` here is the PII redaction of the **original**
 text: any secret in it is still there (see the warning below). On `error`:
 `{"error": "<exception message>"}`.
@@ -148,7 +148,7 @@ On `error`: `{"error": "<exception message>"}`.
 |---|---|---|
 | secret | `SECRET_<RuleID uppercased>` | One entry per scan.sh finding, **not de-duplicated**; hyphens in rule IDs are kept. gitleaks supplies its own rule IDs (`github-pat` becomes `SECRET_GITHUB-PAT`); the scripts' own rules are listed below. `SECRET_UNKNOWN` if a finding had no rule ID. |
 | secret (timeout) | `SECRET_SCAN_TIMEOUT` | Verdict is `error`; the text was not scanned. |
-| pii | `PII_<entity type>` | Sorted and de-duplicated. Default entity types: `PERSON`, `LOCATION`, `EMAIL_ADDRESS`, `PHONE_NUMBER`, `US_SSN`, `US_PASSPORT`, `CREDIT_CARD`, `IBAN_CODE`, `IP_ADDRESS` (`PII_ENTITIES` changes the set; `US_DRIVER_LICENSE` and `US_BANK_NUMBER` are available but off by default). |
+| pii | `PII_<entity type>` | Sorted and de-duplicated. Default entity types: `PERSON`, `LOCATION` (Presidio) and `EMAIL_ADDRESS`, `PHONE_NUMBER`, `US_SSN`, `US_PASSPORT`, `CREDIT_CARD`, `IBAN_CODE`, `IP_ADDRESS` (validators) (`PII_ENTITIES` changes the set; `US_DRIVER_LICENSE` and `US_BANK_NUMBER` are available but off by default). |
 | injection | `INJECTION_OVERRIDE_OR_JAILBREAK` | The only code. The classifier is binary and cannot distinguish sub-kinds, so none are invented. |
 
 Rule IDs from `scan.sh` itself (reported alongside gitleaks' own):
@@ -173,9 +173,10 @@ Rule IDs from `scan.sh` itself (reported alongside gitleaks' own):
 Secrets are replaced by the literal string `***REDACTED:SECRET***`, with any
 surrounding prefix (such as the key name) kept.
 
-PII is replaced by Presidio's default anonymizer operator, which substitutes
-each span with its entity type in angle brackets. (That is the library's
-default; this document did not run Presidio.)
+PII is replaced by its entity type in angle brackets (`<PERSON>`,
+`<EMAIL_ADDRESS>`), the same placeholder Presidio's default anonymizer uses.
+Spans from the two sources never overlap: where a validator span and a Presidio
+span overlap, the validator span is kept.
 
 When a confirmed secret could not be removed, the whole text is replaced by:
 

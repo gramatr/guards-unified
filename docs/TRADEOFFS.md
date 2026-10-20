@@ -37,6 +37,8 @@ Changes that made the server catch more, or fail more safely.
 
 Server PII noise (v0.2.6): Presidio's `US_DRIVER_LICENSE` and `US_BANK_NUMBER` recognizers are off by default and a match needs a score of 0.4. Why: they matched run ids, epoch timestamps, PR numbers and similar digit strings at scores of 0.01 to 0.05, so an advisory notice appeared on most commands. Cost: a real driver-licence or bank number is no longer flagged unless `PII_ENTITIES` adds it back. Also: a `PERSON` span containing a digit, underscore or slash (a pod or resource name) is dropped; a hyphenated real name is kept. Whether to replace Presidio altogether is tracked in the PII bake-off.
 
+Server PII validators (unreleased): the structured PII kinds (cards, IBANs, SSNs, passports, phone numbers, IPv4, email) are found by deterministic checks instead of Presidio's recognizers; Presidio keeps `PERSON` and `LOCATION`. Why: Presidio scored any long digit string, so bare 10-digit ids, epoch timestamps and offsets were phone numbers (40 of 624 ordinary lines at the 0.4 floor), and raising the floor to 0.5 found only 26% of real phone numbers. Cost: 43 ordinary lines in 1000 still flag (was 109); recall 0.96 overall. Given up: unformatted phone numbers, national-format non-US numbers, IPv6, and an SSN or passport number with no keyword are not found; loopback and unspecified addresses, no-reply senders and `git@host` remotes are no longer reported; a Luhn-valid 16-digit id with a card-issuer prefix is still read as a card. `PII_ENGINE=presidio` restores the old behavior for one release.
+
 Changes that deliberately accepted a miss, or removed over-eager detection.
 
 | PR | Live in | Change | Why | What was given up |

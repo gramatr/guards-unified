@@ -1,23 +1,21 @@
 """
-Loads Presidio's AnalyzerEngine + AnonymizerEngine ONCE at daemon startup
-(spaCy's en_core_web_lg load cost is real — measured ~1.6s cold, see
-README "Startup cost" — same "load once, serve resident" shape as
-injection-guard's transformer, unlike secret-guard's zero-model-weight
-gitleaks case).
+Finds PII in two parts: Presidio (loaded ONCE at daemon startup, spaCy's
+en_core_web_lg load cost is real, measured ~1.6s cold, see README "Startup
+cost") for PERSON and LOCATION, which need a statistical model, and the
+deterministic checks in pii_guard.validators for the structured kinds (cards,
+IBANs, SSNs, passports, phone numbers, IPv4, email). Presidio's own pattern
+recognizers for those kinds score any long digit string, so they flagged ids and
+timestamps in tool output; see gramatr/guards-coordination#46.
+PII_ENGINE=presidio restores the previous all-Presidio behavior.
 
-Redacts by default (not flag-only): unlike injection-guard's classifier,
-Presidio gives exact character spans for each entity, so blanking them
-is as safe as secret-guard's precise-span secret redaction — there's no
-"might break legitimate content" risk the way there is for injection-
-guard's whole-chunk judgment.
+Redacts by default (not flag-only): both parts give exact character spans, so
+blanking them is as safe as secret-guard's precise-span secret redaction.
 """
 
 import logging
 
-from presidio_analyzer import AnalyzerEngine
-from presidio_anonymizer import AnonymizerEngine
-
-from pii_guard.config import ENTITIES, LANGUAGE, MIN_SCORE
+from pii_guard import validators
+from pii_guard.config import ENGINE, ENTITIES, LANGUAGE, MIN_SCORE
 
 logger = logging.getLogger("pii_guard")
 
@@ -32,10 +30,11 @@ _anonymizer = None
 # recognizer (requesting it silently never fires), so it is not in the list.
 
 
-# spaCy's name recognizer reads identifiers such as a hyphenated pod name or a
-# resource id as a person (score 0.85). A name has no digit, underscore or slash
-# in it, so a PERSON span that does is an identifier and is dropped.
-_NOT_IN_A_NAME = set("0123456789_/\\")
+# spaCy's name recognizer reads identifiers such as a hyphenated pod name, a
+# resource id or a key=value pair as a person (score 0.85). A name has no digit,
+# underscore, slash, "=", "@" or ":" in it, so a PERSON span that does is an
+# identifier and is dropped.
+_NOT_IN_A_NAME = set("0123456789_/\\=@:")
 
 
 def _is_identifier_not_a_person(text: str, result) -> bool:
@@ -44,15 +43,71 @@ def _is_identifier_not_a_person(text: str, result) -> bool:
     )
 
 
+def merge_spans(presidio_spans, validator_spans) -> list:
+    """Combine both parts into one list of non-overlapping Span, sorted by start.
+    A validator span beats a Presidio span it overlaps (a checksum is stronger
+    evidence than a statistical guess); among spans of the same origin the
+    longer one wins, then the earlier."""
+    tagged = [(1, s) for s in validator_spans] + [(0, s) for s in presidio_spans]
+    tagged.sort(key=lambda t: (-t[0], -(t[1].end - t[1].start), t[1].start))
+    kept: list = []
+    for _, s in tagged:
+        if s.end > s.start and all(s.end <= k.start or k.end <= s.start for k in kept):
+            kept.append(s)
+    return sorted(kept, key=lambda s: (s.start, s.end))
+
+
+def redact(text: str, spans) -> str:
+    """Replace each span (non-overlapping, sorted) with <ENTITY_TYPE>, the same
+    placeholder Presidio's anonymizer uses."""
+    out, pos = [], 0
+    for s in spans:
+        out.append(text[pos : s.start])
+        out.append(f"<{s.entity_type}>")
+        pos = s.end
+    out.append(text[pos:])
+    return "".join(out)
+
+
 def load_engines() -> None:
     """Called once at daemon startup — this is the only place the spaCy
     model loads. Never call this per-request."""
     global _analyzer, _anonymizer
     if _analyzer is not None:
         return
-    logger.info("Loading Presidio AnalyzerEngine + AnonymizerEngine (this happens once, not per request)")
+    from presidio_analyzer import AnalyzerEngine
+
+    logger.info("Loading Presidio AnalyzerEngine (this happens once, not per request); PII_ENGINE=%s", ENGINE)
     _analyzer = AnalyzerEngine()
-    _anonymizer = AnonymizerEngine()
+    if ENGINE == "presidio":
+        from presidio_anonymizer import AnonymizerEngine
+
+        _anonymizer = AnonymizerEngine()
+
+
+def _analyze_validators(text: str) -> tuple[str, list]:
+    wanted = [e for e in ENTITIES if e not in validators.KINDS]
+    presidio = []
+    if wanted:
+        results = _analyzer.analyze(
+            text=text, language=LANGUAGE, entities=wanted, score_threshold=MIN_SCORE
+        )
+        presidio = [
+            validators.Span(r.entity_type, r.start, r.end, r.score)
+            for r in results
+            if not _is_identifier_not_a_person(text, r)
+        ]
+    spans = merge_spans(presidio, validators.find_pii(text, [e for e in ENTITIES if e in validators.KINDS]))
+    return redact(text, spans), spans
+
+
+def _analyze_presidio(text: str) -> tuple[str, list]:
+    results = _analyzer.analyze(
+        text=text, language=LANGUAGE, entities=ENTITIES, score_threshold=MIN_SCORE
+    )
+    results = [r for r in results if not _is_identifier_not_a_person(text, r)]
+    anonymized = _anonymizer.anonymize(text=text, analyzer_results=results)
+    return anonymized.text, [validators.Span(r.entity_type, r.start, r.end, r.score) for r in results]
 
 
 def analyze_and_redact(text: str) -> dict:
@@ -60,20 +115,15 @@ def analyze_and_redact(text: str) -> dict:
     entities carry entity_type/start/end/score but never the original
     matched substring — same "report metadata, not the value" posture
     as secret-guard's findings log."""
-    if _analyzer is None or _anonymizer is None:
+    if _analyzer is None or (ENGINE == "presidio" and _anonymizer is None):
         raise RuntimeError("load_engines() was not called before analyze_and_redact()")
 
-    results = _analyzer.analyze(
-        text=text, language=LANGUAGE, entities=ENTITIES, score_threshold=MIN_SCORE
-    )
-    results = [r for r in results if not _is_identifier_not_a_person(text, r)]
-    anonymized = _anonymizer.anonymize(text=text, analyzer_results=results)
-
+    redacted, spans = (_analyze_presidio if ENGINE == "presidio" else _analyze_validators)(text)
     return {
-        "found": len(results) > 0,
-        "redacted_text": anonymized.text,
+        "found": len(spans) > 0,
+        "redacted_text": redacted,
         "entities": [
-            {"entity_type": r.entity_type, "start": r.start, "end": r.end, "score": r.score}
-            for r in results
+            {"entity_type": s.entity_type, "start": s.start, "end": s.end, "score": s.score}
+            for s in spans
         ],
     }
