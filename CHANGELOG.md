@@ -46,6 +46,16 @@ What was hardened, what was loosened and why is in
   errored (it used to return the untouched original). Secrets stay unredacted
   on a scan error, as before.
 - Tests: `tests/api_contract_test.py`, both models stubbed, run in CI.
+- Fixed: a quoted value in the key-name rules could cross newlines, so prose
+  that quoted a key word with a colon (a quote-wrapped key word, then a second
+  quote lines later) lost every line between the two quotes. A quoted value now
+  stays on its line. Known residual: the same two quotes on one line still
+  redact the text between them. Self-test: 98 cases (one required, one
+  harmless-lookalike added).
+
+### claude-plugin-guards
+
+- Synced the vendored `scan.sh` with the quoted-value fix above.
 
 ## [0.2.3] - 2026-10-19
 
