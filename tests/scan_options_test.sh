@@ -56,6 +56,15 @@ expect_same    "heading ending in password: then prose"          $'Reset the pas
 expect_changed "same-line key: value still redacts"              'secret: Tq7vN2xLm9Kd4RzP8wYb'  # guards:synthetic
 expect_changed "same-line key=value with blanks still redacts"   $'password =\tTq7vN2xLm9Kd4RzP8wYb'  # guards:synthetic
 
+# The ONE next-line form that is a value: a YAML scalar under a line that is only
+# the key and a colon, as a single bare token.
+expect_changed "yaml scalar on the line after a bare key"        $'password:\n  Tq7vN2xLm9Kd4RzP8wYb'  # guards:synthetic
+expect_changed "same, under a list item"                         $'- password:\n    hunter2xyz\n'  # guards:synthetic
+expect_changed "same, nested deeper"                             $'config:\n  api_token:\n    Xk9mQ4vT2pLw8RzN5bJc'  # guards:synthetic
+expect_same    "a nested key on the next line is not a value"    $'secret:\n  name: db-creds'  # guards:synthetic
+expect_same    "a multi-word next line is not a value"           $'token:\n  one two three'  # guards:synthetic
+expect_same    "two keys in a row"                               $'password:\nuser: bob'  # guards:synthetic
+
 # --- a value that is an existing path is not a password (found live) ----------
 # `env`/`printenv`/`export -p` print PWD=<working directory>; PWD is also a real
 # password alias, so the key-name rule used to redact the directory.
