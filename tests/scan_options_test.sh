@@ -46,6 +46,16 @@ expect_same    "PWD (the working directory) is never treated as a secret" "ls of
 expect_same    "OLDPWD is never treated as a secret"                     "back to $cwd_here done" SECRET_GUARD_ENV_VALUES=1 OLDPWD="$cwd_here"
 expect_same    "a secret-named var whose value is an existing path is skipped" "dir /tmp listed" SECRET_GUARD_ENV_VALUES=1 MY_SERVICE_TOKEN=/tmp
 
+# --- a value that is an existing path is not a password (found live) ----------
+# `env`/`printenv`/`export -p` print PWD=<working directory>; PWD is also a real
+# password alias, so the key-name rule used to redact the directory.
+expect_same    "PWD=<existing dir> (what env prints)"        "PWD=$cwd_here"
+expect_same    "pwd: <existing dir>"                          "pwd: $cwd_here"
+expect_same    "export OLDPWD=<existing dir>"                 "declare -x OLDPWD=\"$cwd_here\""
+expect_same    "a quoted DB path under a password-ish key"     "password_file: /usr/bin"
+expect_changed "PWD=<something that is NOT a path> still redacts" "PWD=Tq7vN2xLm9Kd4RzP8wYb"  # guards:synthetic
+expect_changed "a path-looking value that does not exist still redacts" "DB_PASSWORD=/not/a/real/path/Tq7vN2xLm9Kd4RzP8wYb"  # guards:synthetic
+
 # --- SECRET_GUARD_SKIP_GITLEAKS=1: deterministic passes only -------------
 DSN='postgresql://svc:Tq7vN2xLm9Kd4RzP8wYb@db.internal:5432/app'
 expect_changed "skip-gitleaks still redacts a DSN password" "$DSN" SECRET_GUARD_SKIP_GITLEAKS=1
