@@ -14,6 +14,8 @@ What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Every environment variable the server reads, budgets and limits |
 | [docs/LIMITS.md](docs/LIMITS.md) | What it does not catch |
 | [docs/TRADEOFFS.md](docs/TRADEOFFS.md) | What was hardened, what was loosened, and why |
+| [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md) | Assets, actors, trust boundaries, and what is and is not defended |
+| [SECURITY.md](SECURITY.md) | How to report a vulnerability privately |
 | [docs/RELEASING.md](docs/RELEASING.md) | Cutting a release |
 
 ## Why this exists
