@@ -39,6 +39,12 @@ expect_same    "short env value skipped"            "x abc123 y"                
 expect_same    "placeholder env value skipped"      'x ${SOMETHING} y'                 SECRET_GUARD_ENV_VALUES=1 DB_PASSWORD='${SOMETHING}'
 expect_same    "_FILE name skipped"                 "x /run/secrets/pw y"              SECRET_GUARD_ENV_VALUES=1 DB_PASSWORD_FILE=/run/secrets/pw
 expect_same    "non-secret name skipped"            "x $V y"                           SECRET_GUARD_ENV_VALUES=1 HOSTNAME_LABEL="$V"
+# The shell's current directory lives in PWD, a name that matches the PW alias.
+# Live testing found every mention of the working directory redacted.
+cwd_here="$(pwd)"
+expect_same    "PWD (the working directory) is never treated as a secret" "ls of $cwd_here: proj" SECRET_GUARD_ENV_VALUES=1 PWD="$cwd_here"
+expect_same    "OLDPWD is never treated as a secret"                     "back to $cwd_here done" SECRET_GUARD_ENV_VALUES=1 OLDPWD="$cwd_here"
+expect_same    "a secret-named var whose value is an existing path is skipped" "dir /tmp listed" SECRET_GUARD_ENV_VALUES=1 MY_SERVICE_TOKEN=/tmp
 
 # --- SECRET_GUARD_SKIP_GITLEAKS=1: deterministic passes only -------------
 DSN='postgresql://svc:Tq7vN2xLm9Kd4RzP8wYb@db.internal:5432/app'

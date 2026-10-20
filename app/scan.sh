@@ -276,9 +276,15 @@ if [ "${SECRET_GUARD_ENV_VALUES:-0}" = "1" ]; then
   while IFS= read -r envname; do
     [[ "$envname" =~ (SECRET|PASSWORD|PASSWD|TOKEN|API_?KEY|PRIVATE_KEY|CREDENTIAL|(^|_)(PW|PWD|PASS)($|_)) ]] || continue
     [[ "$envname" =~ (_FILE|_PATH|_DIR|_URL|_URI|_NAME|_ID|_TYPE|_HOST|_PORT|_USER)$ ]] && continue
+    # PWD / OLDPWD are the shell's current directories, not passwords: their
+    # names match the PW alias and the live check found every mention of the
+    # working directory in Bash output redacted.
+    case "$envname" in PWD|OLDPWD) continue ;; esac
     envval="${!envname}"
     [ "${#envval}" -ge 8 ] || continue
     ctx_placeholder "$envval" && continue
+    # A value that is an existing file or directory is a path, not a secret.
+    [ -e "$envval" ] && continue
     if [[ "$CTX_TEXT" == *"$envval"* ]]; then
       CTX_TEXT="${CTX_TEXT//"$envval"/***REDACTED:SECRET***}"
       CTX_HITS=$((CTX_HITS + 1))
