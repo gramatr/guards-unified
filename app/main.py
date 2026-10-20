@@ -47,7 +47,7 @@ from pathlib import Path
 
 import injection_guard.model as injection_model
 import pii_guard.engine as pii_engine
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO)
@@ -115,6 +115,31 @@ app = FastAPI(title="guards-unified", lifespan=_lifespan)
 
 class ScanRequest(BaseModel):
     text: str
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, default))
+    except ValueError:
+        return default
+
+
+# Request size caps, in UTF-8 bytes of `text`. The models cost about 0.25 s per
+# KB and a handler cannot be cancelled once running, so one oversized request
+# would keep the service busy long after its client gave up. The full route is
+# capped far lower than the credential-only route: callers send the model axes
+# a short prefix, while the credential scan is cheap and reads whole outputs.
+SCAN_FULL_MAX_BYTES = _env_int("SCAN_FULL_MAX_BYTES", 65536)
+SCAN_SECRET_MAX_BYTES = _env_int("SCAN_SECRET_MAX_BYTES", 1048576)
+
+
+def _enforce_size(text: str, limit: int, env_name: str) -> None:
+    size = len(text.encode("utf-8", "replace"))
+    if size > limit:
+        raise HTTPException(
+            status_code=413,
+            detail={"error": "text_too_large", "bytes": size, "limit_bytes": limit, "setting": env_name},
+        )
 
 
 @app.get("/health")
@@ -236,6 +261,7 @@ def scan_secret(req: ScanRequest) -> dict:
 
     Same finding shape as /v1/scan; redacted_text is the text with secrets
     redacted (no PII redaction)."""
+    _enforce_size(req.text, SCAN_SECRET_MAX_BYTES, "SCAN_SECRET_MAX_BYTES")
     secret_result = _scan_secrets(req.text)
     _log_metric(secret_result)
     redacted = secret_result["detail"]["redacted_text"] if secret_result["verdict"] == "found" else req.text
@@ -252,7 +278,13 @@ def scan(req: ScanRequest) -> dict:
     redaction pass's untouched copy — the per-finding verdicts above
     are computed independently on the ORIGINAL text, not on each
     other's output, so one detector's redaction never hides a finding
-    from another."""
+    from another.
+
+    Bodies over SCAN_FULL_MAX_BYTES are refused with 413. If any finding has
+    verdict "error", redacted_text only reflects the axes that succeeded (a
+    credential scan error leaves credentials in it, by design: the caller keeps
+    the original text), so check the verdicts before trusting it."""
+    _enforce_size(req.text, SCAN_FULL_MAX_BYTES, "SCAN_FULL_MAX_BYTES")
     secret_result = _scan_secrets(req.text)
     pii_result = _scan_pii(req.text)
     injection_result = _classify_injection(req.text)
@@ -263,8 +295,14 @@ def scan(req: ScanRequest) -> dict:
     current = req.text
     if secret_result["verdict"] == "found":
         current = secret_result["detail"]["redacted_text"]
-    pii_on_current = pii_engine.analyze_and_redact(current) if secret_result["verdict"] != "error" else None
-    final_redacted_text = pii_on_current["redacted_text"] if pii_on_current else current
+    # This pass only builds redacted_text. It must not take the response down:
+    # the three findings above are already computed, and an error here leaves
+    # the text redacted by the credential axis alone.
+    try:
+        final_redacted_text = pii_engine.analyze_and_redact(current)["redacted_text"]
+    except Exception:
+        logger.exception("pii redaction of the combined text failed")
+        final_redacted_text = current
 
     return {
         "findings": [secret_result, pii_result, injection_result],
