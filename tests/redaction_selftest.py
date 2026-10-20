@@ -278,6 +278,21 @@ def main() -> int:
     for cname, text in last_segment_secrets.items():
         check(cname, text, [sv], required=True)
 
+    # A credential inside a very long line is still found. Long unbroken runs are
+    # masked for the context rules (they used to make the scan quadratic), so these
+    # pin that the mask never hides a credential, whether it sits after a run, before one, between two,
+    # and a long run as the value itself.
+    run = "a" * 20000
+    long_line_secrets = {
+        "long-line/after-run": (f"{run} password: {sv}", [sv]),  # guards:synthetic
+        "long-line/before-run": (f"password: {sv} {run}", [sv]),  # guards:synthetic
+        "long-line/between-runs": (f"{run} DB_PASSWORD={sv} {run}", [sv]),  # guards:synthetic
+        "long-line/in-json": ("{" + f'"blob":"{run}","password":"{sv}"' + "}", [sv]),  # guards:synthetic
+        "long-line/run-as-value": (f"api_secret={run}", [run]),
+    }
+    for cname, (text, material) in long_line_secrets.items():
+        check(cname, text, material, required=True)
+
     # Unquoted values in env, INI, YAML and shell contexts, and string literals
     # assigned to a token-named constant, stay secrets even though the code-shape
     # rule exists. Short, lowercase and digit-bearing words are included on purpose.
