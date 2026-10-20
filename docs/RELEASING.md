@@ -108,10 +108,32 @@ finished, and its Publish run was cancelled before `merge-multiarch`, so
 `:cpu` / `:gpu` never moved. The tag still points at an old commit (09ca1a7)
 and the cancelled run left two amd64-only images in the package,
 `cpu-amd64-v0.2.0` and `gpu-amd64-v0.2.0`, which contain **old code**. Do not
-use that tag or those images. The next release is `v0.2.1`. A published tag is
-never deleted and re-created here: it would rewrite a ref other people may have
-fetched, so a burned version number is simply skipped. The two stray images can
-be deleted in the package UI (select the versions tagged `*-v0.2.0`).
+use that tag or those images. A published tag is never deleted and
+re-created here: it would rewrite a ref other people may have fetched, so a
+burned version number is simply skipped. The two stray images can be deleted in
+the package UI (select the versions tagged `*-v0.2.0`).
+
+`0.2.1` was never tagged either: it was only ever the `VERSION` value on
+`main` for a few hours. Both numbers are skipped and the next release is
+`v0.2.2`, which is also the first release under the lockstep rule below.
+
+## Versions move in lockstep with claude-plugin-guards
+
+`guards-unified` and `claude-plugin-guards` are one product shipped as two
+packages, so **they carry the same version and the same tag**: a release is
+`vX.Y.Z` on both repos, cut together. Nobody should have to know which package
+is "the highest". The rules:
+
+- Cut a release by bumping `VERSION` in **both** repos in a PR each, merging
+  both, then tagging each merge commit `vX.Y.Z`. This repo's tag push publishes
+  the image; the plugin repo's tag is a label (plugin installs track `main`
+  and are identified by commit).
+- Both repos have a CI check that a pushed `vX.Y.Z` tag equals `VERSION` at the
+  tagged commit, so a mismatched tag fails loudly. Neither repo's CI can see the
+  other, so keeping the two numbers equal is a release-checklist step: before
+  tagging, confirm `VERSION` is the same in both.
+- Plugin-only or service-only changes between releases do not get their own
+  number; they ride the next joint release.
 
 ## If this repo is ever deleted and recreated
 
