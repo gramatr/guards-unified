@@ -276,8 +276,9 @@ Each row: the control that exists, its documented limit, and the evidence.
   image in CI and on a schedule; dependency version floors for known CVEs; the
   image is rebuilt with OS upgrades; the container runs non-root; the updater is
   pinned to a version and scoped by label to this image.
-- **Limit.** Known CVEs in the Go runtime inside the upstream gitleaks binary are
-  accepted in `.trivyignore` until a fixed release exists. Python packages are
+- **Limit.** The images build gitleaks from its release tag with fixed Go
+  modules, and `.trivyignore` is empty; the unpatched upstream release is still
+  what a machine without Docker downloads. Python packages are
   installed by version floor, not by hash. The build copies the `uv` tool by tag
   and digest, and the injection model is downloaded at the revision this project
   evaluated, reported by `GET /about`; `INJECTION_GUARD_MODEL_ID` can still
