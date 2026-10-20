@@ -32,6 +32,13 @@ What was hardened, what was loosened and why is in
 
 ---
 
+## [Unreleased]
+
+### guards-unified
+
+- Fixed: a key that names an identifier or reference of a secret is no longer redacted when the descriptor (`id`, `ref`, `arn`, `name`, `type`, `path`, `file`, `version`, `count`, `ttl`, `namespace`, `store`, `manager`, `provider`, `url`) is the last segment but not adjacent to the credential word: `client_secret_bws_id`, `clientSecretBwsId`, `CLIENT_SECRET_BWS_ID`, `secret_vault_id`, `token_store_ref`, `credential_provider_arn`. This applies to the context pass (`secret-lead-in`) and to gitleaks' `generic-api-key` findings, which are dropped for such a key so the two passes agree. A key whose last segment is the credential or a value word (`AUTH_TOKEN`, `db_password`, `api_secret`, `client_secret_value`, `secret_key`) still redacts, as does `secretValid` (a camelCase `Id` must be capitalized). Found when a publish guard denied a commit of a test fixture holding a vault secret id.
+- Added: self-test cases both ways (reference keys must pass unchanged, last-segment keys must redact).
+
 ## [0.2.8] - 2026-10-20
 
 ### guards-unified
