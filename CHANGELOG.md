@@ -45,7 +45,16 @@ What was hardened, what was loosened and why is in
 - Known limit: a malformed `"pw:"value"` (the key's closing quote after the
   colon, the value glued on) reads as that prose and is not redacted; see
   [docs/TRADEOFFS.md](docs/TRADEOFFS.md).
-- Self-test: 108 cases (seven required, three harmless-lookalike added).
+- Fixed: the name of a setting about a credential is no longer read as a
+  credential. A key that ends in a unit, limit, switch or mode word
+  (`..._BYTES`, `..._SIZE`, `..._LENGTH`, `..._LIMIT`, `..._MAX`, `..._MIN`,
+  `..._TIMEOUT`, `..._SECS`, `..._SECONDS`, `..._MS`, `..._PORT`, `..._DEPTH`,
+  `..._MODE`, `..._ASK`, `..._ENABLED`, `..._DISABLED`) is treated like the
+  descriptor names already skipped (`secretName`, `token_type`). Documentation
+  and commit messages that show such settings were blocked by the publish guard.
+  A key whose credential word is last (`MAX_BYTES_PASSWORD`, `AUTH_TOKEN`) is
+  still redacted.
+- Self-test: 114 cases (nine required, seven harmless-lookalike added since 0.2.4).
 
 ### claude-plugin-guards
 
