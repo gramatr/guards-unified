@@ -26,8 +26,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install ruff
+      - run: pip install ruff fastapi httpx pydantic
       - run: ruff check app/ tests/
+      - name: API contract tests
+        # The two models are stubbed (they are gated and heavy): this pins the
+        # request size limits and what a failing axis does to the response.
+        run: python3 tests/api_contract_test.py
       - name: scan.sh option tests
         # Fabricated values only; works without gitleaks installed.
         run: bash tests/scan_options_test.sh

@@ -39,6 +39,13 @@ echo "lint"
 command -v ruff >/dev/null 2>&1 && step "ruff app/ tests/" ruff check app/ tests/
 command -v shellcheck >/dev/null 2>&1 && step "shellcheck scripts" shellcheck -S warning app/scan.sh tests/*.sh
 
+echo "API contract (models stubbed; needs fastapi + httpx)"
+if python3 -c "import fastapi, httpx" >/dev/null 2>&1; then
+  step "api_contract_test" python3 tests/api_contract_test.py
+else
+  echo "fastapi/httpx not installed here: skipping api_contract_test (CI runs it)"
+fi
+
 echo "without gitleaks (as the CI lint job sees it)"
 step "scan_options_test" env "PATH=$SHADOW" bash tests/scan_options_test.sh
 
