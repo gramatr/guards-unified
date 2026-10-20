@@ -175,9 +175,15 @@ never flagged for PII or injection). The server itself has no such cap.
 - CI cannot start the full service: the injection model is a gated download.
   CI builds the CPU image and runs the redaction self-test against its
   `scan.sh`, and calls the secret route function directly inside the image.
-  **No automated test exercises the real PII engine or injection model end to
-  end.** `tests/api_contract_test.py` covers the size caps and what a failing
-  axis does, with both models stubbed. A live
+  `tests/e2e_real_models_test.py` is the one test that runs the real PII engine
+  and injection model end to end through `/v1/scan` (five fabricated cases);
+  `.github/workflows/e2e.yml` runs it weekly, on tag pushes and on demand, on
+  the self-hosted arm64 runner. It needs a `HF_TOKEN` repository secret that a
+  maintainer must create, and it is advisory, not a gate on `publish.yml`
+  (see [RELEASING.md](RELEASING.md#release-checklist-real-model-e2e)). It is
+  five cases, not a measurement of detection quality, and it does not run in
+  `tests/run-all.sh` or on pull requests. `tests/api_contract_test.py` covers the
+  size caps and what a failing axis does, with both models stubbed. A live
   `tests/redaction_selftest.py --endpoint` run after a release covers the
   secret axis only.
 - The tests use only fabricated values. They pin what is covered (a required

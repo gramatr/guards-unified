@@ -188,10 +188,21 @@ opt-in switches `SECRET_GUARD_REDACT_KEY_IDS` and `SECRET_GUARD_ENV_VALUES`
 locally.
 
 Note what this does not verify: the self-test asserts on the secret axis only.
-CI cannot start the full service (the injection model is a gated download), so
-no automated test in this repo exercises the PII or injection axes end to end;
-a quick manual `POST /v1/scan` against the live service is the only check. See
+The PII and injection axes are covered by the real-model E2E below. See
 [LIMITS.md](LIMITS.md#testing-gaps).
+
+### Release checklist: real-model E2E
+
+`.github/workflows/e2e.yml` builds the CPU image on the arm64 runner, starts
+it with the repository secret `HF_TOKEN` (the injection model is gated) and
+runs `tests/e2e_real_models_test.py`. A tag push starts it alongside
+`publish.yml`, but it is **advisory, not a `needs:` of publish**: a missing or
+expired `HF_TOKEN` would otherwise block every release. So, as a checklist
+step: open the "E2E (real models)" run for the tag and confirm it is green
+(re-run it with workflow_dispatch if it is not). If it fails with "HF_TOKEN
+missing", a maintainer has to create that secret first. Against an already
+running service the same test is
+`python3 tests/e2e_real_models_test.py --endpoint http://127.0.0.1:8700`.
 
 Cancelling a release: cancel the Publish run before `merge-multiarch` finishes.
 The bare `:cpu` / `:gpu` tags change only in that final step, so nothing running
