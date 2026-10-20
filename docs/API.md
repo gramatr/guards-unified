@@ -148,7 +148,7 @@ On `error`: `{"error": "<exception message>"}`.
 |---|---|---|
 | secret | `SECRET_<RuleID uppercased>` | One entry per scan.sh finding, **not de-duplicated**; hyphens in rule IDs are kept. gitleaks supplies its own rule IDs (`github-pat` becomes `SECRET_GITHUB-PAT`); the scripts' own rules are listed below. `SECRET_UNKNOWN` if a finding had no rule ID. |
 | secret (timeout) | `SECRET_SCAN_TIMEOUT` | Verdict is `error`; the text was not scanned. |
-| pii | `PII_<entity type>` | Sorted and de-duplicated. Entity types: `PERSON`, `LOCATION`, `EMAIL_ADDRESS`, `PHONE_NUMBER`, `US_SSN`, `US_DRIVER_LICENSE`, `US_PASSPORT`, `US_BANK_NUMBER`, `CREDIT_CARD`, `IBAN_CODE`, `IP_ADDRESS`. |
+| pii | `PII_<entity type>` | Sorted and de-duplicated. Default entity types: `PERSON`, `LOCATION`, `EMAIL_ADDRESS`, `PHONE_NUMBER`, `US_SSN`, `US_PASSPORT`, `CREDIT_CARD`, `IBAN_CODE`, `IP_ADDRESS` (`PII_ENTITIES` changes the set; `US_DRIVER_LICENSE` and `US_BANK_NUMBER` are available but off by default). |
 | injection | `INJECTION_OVERRIDE_OR_JAILBREAK` | The only code. The classifier is binary and cannot distinguish sub-kinds, so none are invented. |
 
 Rule IDs from `scan.sh` itself (reported alongside gitleaks' own):

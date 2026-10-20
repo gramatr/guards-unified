@@ -35,6 +35,8 @@ Changes that made the server catch more, or fail more safely.
 
 ## Loosening and walk-backs
 
+Server PII noise (v0.2.6): Presidio's `US_DRIVER_LICENSE` and `US_BANK_NUMBER` recognizers are off by default and a match needs a score of 0.4. Why: they matched run ids, epoch timestamps, PR numbers and similar digit strings at scores of 0.01 to 0.05, so an advisory notice appeared on most commands. Cost: a real driver-licence or bank number is no longer flagged unless `PII_ENTITIES` adds it back. Also: a `PERSON` span containing a digit, underscore or slash (a pod or resource name) is dropped; a hyphenated real name is kept. Whether to replace Presidio altogether is tracked in the PII bake-off.
+
 Changes that deliberately accepted a miss, or removed over-eager detection.
 
 | PR | Live in | Change | Why | What was given up |

@@ -121,6 +121,40 @@ def main() -> int:
     record("body over SCAN_FULL_MAX_BYTES gets 413",
            [] if status == 413 else [f"HTTP {status}, expected 413"])
 
+    # 6. Engineering noise is not PII: identifiers and numbers in ordinary tool
+    # output must not raise the PII verdict (shapes reported from a live session:
+    # run ids, epoch timestamps, PR numbers, 32-character hex ids, GUIDs, pod names).
+    noise = [
+        "gh run view 39442632382 --json status",
+        "merged PR #75 and PR #80, run 39437619279",
+        "ts 1760972400123",
+        "zone d6696ab46cfaeabacc4431436d1b74a7 updated",
+        "subscription 4f2a9c1e-7b3d-4e58-9a61-0c8d2b5e7f13 tenant",
+        "fix(coder): remove flag from the Qwen coder (#3226)",
+        "pod chi-clickhouse-v2-clickhouse-v2-0-0-0 ready",
+        "cpu=573.00% mem=2.145GiB / 4GiB",
+    ]
+    problems = []
+    for text in noise:
+        _, body, v = scan("noise", text)
+        if v.get("pii") != "clean":
+            problems.append(f"{text!r} flagged as PII ({v.get('pii')!r})")
+    record("engineering noise is not flagged as PII", problems)
+
+    # 7. ...while hyphenated real names, emails, IPs and card numbers still are.
+    real = [
+        "Contact Alice Example at alice@example.invalid",
+        "Mary-Jane Smith-Jones signed the form",
+        "server at 10.11.0.230 answered",
+        "card 4111 1111 1111 1111 was declined",
+    ]
+    problems = []
+    for text in real:
+        _, body, v = scan("real", text)
+        if v.get("pii") != "found":
+            problems.append(f"{text!r} not flagged as PII ({v.get('pii')!r})")
+    record("real PII is still flagged", problems)
+
     failed = [r for r in results if not r[1]]
     print(f"\n{len(results) - len(failed)}/{len(results)} passed")
     return 1 if failed else 0

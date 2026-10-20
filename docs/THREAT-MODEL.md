@@ -213,7 +213,7 @@ Each row: the control that exists, its documented limit, and the evidence.
 
 ### T9. Personal data in tool output
 
-- **Control.** Presidio finds 11 English entity types and the plugin flags them
+- **Control.** Presidio finds 9 English entity types by default and the plugin flags them
   in the first 2 KB of Bash output; values are left intact by default.
 - **Limit.** English only; statistical misses and false positives; most real-world
   PII falls outside the entity set (a 63% figure from the predecessor project's
@@ -332,7 +332,7 @@ Stated plainly, so nobody relies on a guarantee that does not exist.
   account or the hook environment**, including anyone who can set the override
   variables (`GUARDS_ALLOW_CRED_READ`, `GUARDS_ALLOW_PUBLISH_SECRETS`,
   `GUARDS_MCP_SCAN`, `GUARDS_MCP_SKIP`).
-- **Personal data beyond the 11 English entity types**, and any non-English text.
+- **Personal data beyond the 9 default English entity types**, and any non-English text.
 - **Policy, audit, async delivery, and org-wide rules.** These belong to a
   platform that serves the same endpoint contract behind `GUARDS_ENDPOINT`, not
   to this repository.
