@@ -178,6 +178,7 @@ def main() -> int:
         "yaml/quoted-then-more-lines": 'password: "correct horse battery"\nthe next line stays\n',
         "env/suffix-not-at-end": "MAX_BYTES_PASSWORD=Qm4xZ9vLpR2tK7wB",  # guards:synthetic
         "env/token-with-real-value": "AUTH_TOKEN=Zq8mLw3pXr7vKd2n",  # guards:synthetic
+        "env/tokenizer-secret-key": "tokenizer_secret=Kd2nZq8mLw3pXr7v",  # guards:synthetic
         "yaml/single-quoted": "client_secret: 'Tq7vN2xLm9Kd4RzP8wYb'",
         "header/bearer": f"Authorization: Bearer {pw}",
         "header/basic": "authorization: Basic YWRtaW46c2VjcmV0cGFzcw==",
@@ -189,7 +190,7 @@ def main() -> int:
         "dsn/clickhouse": [pw], "dsn/https-userinfo": [pw],
         "env/special-chars": ["Xk9mQ4vT2p@Lw8RzN5bJc7Hd3"], "env/low-entropy": ["hunter2"],
         "json/punctuation-secret-key": [punct], "yaml/quoted-with-spaces": ["correct horse battery"],
-        "yaml/next-line-scalar": [pw], "yaml/quoted-then-more-lines": ["correct horse battery"], "env/suffix-not-at-end": ["Qm4xZ9vLpR2tK7wB"], "env/token-with-real-value": ["Zq8mLw3pXr7vKd2n"],"yaml/single-quoted": [pw], "header/bearer": [pw], "header/basic": ["YWRtaW46c2VjcmV0cGFzcw=="],  # guards:synthetic
+        "yaml/next-line-scalar": [pw], "yaml/quoted-then-more-lines": ["correct horse battery"], "env/suffix-not-at-end": ["Qm4xZ9vLpR2tK7wB"], "env/token-with-real-value": ["Zq8mLw3pXr7vKd2n"], "env/tokenizer-secret-key": ["Kd2nZq8mLw3pXr7v"],"yaml/single-quoted": [pw], "header/bearer": [pw], "header/basic": ["YWRtaW46c2VjcmV0cGFzcw=="],  # guards:synthetic
         "query/access-token": [pw], "aws/secret-access-key": ["wJalrXUtnFEMIK7MDENGbPxRfiCYzzzzzzzzzzzz"],
     }
     # Command-line flags and vendor shapes.
@@ -281,6 +282,7 @@ def main() -> int:
         "benign/setting-max-bytes": "SCAN_SECRET_MAX_BYTES=2000000",  # guards:synthetic
         "benign/setting-timeout": "API_TOKEN_TIMEOUT=30000",  # guards:synthetic
         "benign/setting-mode": "CRED_MODE=strict",  # guards:synthetic
+        "benign/tokenizer-assignment": "self._tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)",  # guards:synthetic
         "benign/quoted-keywords-across-lines": 'A heading that ended in "token:" then text\nline two\nline three\nand later "secret:" follows here\nlast line\n',
         "benign/pwd-env-line": "PWD=/usr/bin",
         "benign/pwd-label": "pwd: /tmp",

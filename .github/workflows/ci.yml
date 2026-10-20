@@ -28,6 +28,9 @@ jobs:
           python-version: "3.12"
       - run: pip install ruff fastapi httpx pydantic
       - run: ruff check app/ tests/
+      - name: Dockerfile pins
+        # No floating tags for external images (uv, base images).
+        run: bash tests/dockerfile_pins_test.sh
       - name: API contract tests
         # The two models are stubbed (they are gated and heavy): this pins the
         # request size limits and what a failing axis does to the response.

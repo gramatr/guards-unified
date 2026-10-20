@@ -275,11 +275,12 @@ Each row: the control that exists, its documented limit, and the evidence.
   image is rebuilt with OS upgrades; the container runs non-root; the updater is
   pinned to a version and scoped by label to this image.
 - **Limit.** Known CVEs in the Go runtime inside the upstream gitleaks binary are
-  accepted in `.trivyignore` until a fixed release exists. The build copies the
-  `uv` tool from its floating `latest` tag, and Python packages are installed by
-  version floor, not by hash. The injection model is downloaded from Hugging Face
-  at first start and is not pinned to a revision; `INJECTION_GUARD_MODEL_ID` can
-  point anywhere, with only a warning. The plugin's Watchtower container holds the
+  accepted in `.trivyignore` until a fixed release exists. Python packages are
+  installed by version floor, not by hash. The build copies the `uv` tool by tag
+  and digest, and the injection model is downloaded at the revision this project
+  evaluated, reported by `GET /about`; `INJECTION_GUARD_MODEL_ID` can still
+  point anywhere, with only a warning, and then follows that repository's default
+  branch unless a revision is set. The plugin's Watchtower container holds the
   Docker socket and pulls the floating `:cpu` tag every five minutes, so a bad
   published image would reach users within minutes (pin the tag and remove
   Watchtower if that is not acceptable). The plugin itself tracks `main`. Model

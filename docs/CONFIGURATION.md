@@ -19,6 +19,7 @@ file. Defaults below are read from the code at v0.2.3.
 |---|---|---|---|
 | `METRICS_PATH` | `/app/metrics/metrics.jsonl` | server | File that `POST /v1/scan` and `POST /v1/scan/secret` append one JSON line per finding to (`ts`, `type`, `verdict`, `reason_code` only). The parent directory is created if missing; a write failure is logged and ignored. Never rotated. |
 | `INJECTION_GUARD_DEVICE` | `auto` (`cpu` in the `:cpu` image) | server | `auto` uses CUDA if PyTorch sees a GPU, else CPU. `cpu` forces CPU. `cuda` forces GPU and makes startup fail if none is visible. |
+| `INJECTION_GUARD_MODEL_REVISION` | the commit this project evaluated (for the default model), else `main` | server | Hugging Face revision of the model to download. Pinned so a change upstream cannot change the detector without a commit here. Reported by `GET /about` as `model_revision`. To bump: load the new revision, run the live self-test and the end-to-end test, then change `RECOMMENDED_MODEL_REVISION` in `app/injection_guard/config.py`. |
 | `INJECTION_GUARD_MODEL_ID` | `meta-llama/Llama-Prompt-Guard-2-86M` | server | Hugging Face model for the injection axis. Any other value logs a warning at startup: nothing in this project has evaluated it. Reported by `GET /about` as `model`. |
 | `SCAN_FULL_MAX_BYTES` | `65536` | server | Largest `text` (UTF-8 bytes) `POST /v1/scan` accepts; larger gets HTTP 413. Low on purpose: the PII and injection models cost about 0.25 s per KB and a running request cannot be cancelled. Callers that want the model axes should send a short prefix. |
 | `SCAN_SECRET_MAX_BYTES` | `1048576` | server | Largest `text` `POST /v1/scan/secret` accepts; larger gets HTTP 413. Higher because this route is cheap and callers send whole tool outputs. |
@@ -88,6 +89,22 @@ The scan language for PII is fixed at English (`en`) in code.
 - The container runs as a non-root user (`guards`, UID and GID 1000).
 - A liveness check hits `GET /health` every 30 s (5 s timeout, 60 s start
   period). `/health` returns `ok` without checking the models.
+
+## Supply chain
+
+Build inputs are pinned so a rebuild cannot change the image without a commit:
+
+- **`uv`** (copied into both images): tag and digest, in `Dockerfile` and
+  `Dockerfile.cpu`. To bump, pick a release, read its digest with
+  `docker buildx imagetools inspect ghcr.io/astral-sh/uv:<version>`, and change
+  tag and digest together in both files.
+- **Base images and gitleaks:** explicit tags (`python:3.12-slim`, gitleaks by
+  release).
+- **The injection model:** the revision above.
+- `tests/dockerfile_pins_test.sh` fails on a floating `latest` tag or a missing
+  tag for any external image, in `run-all.sh` and in CI.
+
+Python packages are still installed by version floor, not by hash.
 
 ## Budgets and limits
 

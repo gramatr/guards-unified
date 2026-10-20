@@ -46,6 +46,9 @@ else
   echo "fastapi/httpx not installed here: skipping api_contract_test (CI runs it)"
 fi
 
+echo "build inputs"
+step "dockerfile_pins_test" bash tests/dockerfile_pins_test.sh
+
 echo "without gitleaks (as the CI lint job sees it)"
 step "scan_options_test" env "PATH=$SHADOW" bash tests/scan_options_test.sh
 

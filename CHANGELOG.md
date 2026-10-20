@@ -54,6 +54,15 @@ What was hardened, what was loosened and why is in
   and commit messages that show such settings were blocked by the publish guard.
   A key whose credential word is last (`MAX_BYTES_PASSWORD`, `AUTH_TOKEN`) is
   still redacted.
+- Fixed: a tokenizer is not a token. Variables named `tokenizer` (the usual
+  result of the Hugging Face `AutoTokenizer` loader) and similar names
+  (`tokenization`, `tokenised`) are no longer redacted; a key that also has
+  another credential word (`tokenizer_secret`) still is.
+- Changed: build inputs are pinned. `uv` is copied by tag and digest, the
+  injection model is downloaded at the revision this project evaluated
+  (`INJECTION_GUARD_MODEL_REVISION`, reported by `GET /about` as
+  `model_revision`), and `tests/dockerfile_pins_test.sh` fails on a floating tag.
+  Python packages are still installed by version floor.
 - Self-test: 114 cases (nine required, seven harmless-lookalike added since 0.2.4).
 
 ### claude-plugin-guards
