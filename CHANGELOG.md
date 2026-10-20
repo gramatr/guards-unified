@@ -2,7 +2,7 @@
 
 Covers both packages of the guards line, `guards-unified` (the server image,
 this repository) and [`claude-plugin-guards`](https://github.com/gramatr/claude-plugin-guards)
-(the Claude Code plugin), from the first tagged release to v0.2.4.
+(the Claude Code plugin), from the first tagged release to v0.2.5.
 
 ## How the versions work
 
@@ -32,7 +32,7 @@ What was hardened, what was loosened and why is in
 
 ---
 
-## [Unreleased]
+## [0.2.5] - 2026-10-20
 
 ### guards-unified
 
@@ -63,12 +63,19 @@ What was hardened, what was loosened and why is in
   (`INJECTION_GUARD_MODEL_REVISION`, reported by `GET /about` as
   `model_revision`), and `tests/dockerfile_pins_test.sh` fails on a floating tag.
   Python packages are still installed by version floor.
-- Self-test: 114 cases (nine required, seven harmless-lookalike added since 0.2.4).
+- Added: a scheduled and tag-triggered end-to-end workflow runs the real PII and injection models through `/v1/scan` (advisory, not a publish gate; needs the `HF_TOKEN` repository secret). `SECURITY.md` (private vulnerability reporting) and `docs/THREAT-MODEL.md`.
+- Self-test: 116 cases (eleven required, nine harmless-lookalike added since 0.2.4).
 
 ### claude-plugin-guards
 
-- Synced the vendored `scan.sh` with the fix above. The plugin's CI now fails
-  when the vendored copy differs from the server's.
+- Changed: the credential-file guard asks (for `.env`, kubeconfig and similar) only where a person can answer, and denies in `auto`, `bypassPermissions`, `dontAsk` and unknown modes, the same rule as the publish guard.
+- Fixed: every hook now enforces its own deadline below its Claude Code timeout and decides deliberately when it expires (hard guards deny, output hooks withhold, advisory hooks stay silent). Claude Code fails open when a hook outlives its timeout, which this closes.
+- Fixed: the credential-file guard no longer allows every call when `jq` is missing; it reads the payload with awk, and denies if even that fails.
+- Fixed: the prompt hook scans the whole prompt (up to 900000 bytes) on the secret-only route, so a credential anywhere in a long prompt gets the note.
+- Fixed: the `scan` MCP tool reports the real HTTP status (a 413 names the limit and the setting) instead of "unreachable".
+- Added: tests for the SendMessage, prompt and self-heal hooks and the MCP tool, a CI check that the vendored `scan.sh` matches the server's, and `SECURITY.md`.
+- Documented: the verified Claude Code behaviors (a hook timeout fails open; an ask with no person is a deny; deny beats ask beats allow), a configuration reference, a hook failure-mode matrix, limits and trade-offs pages.
+- Synced the vendored `scan.sh` with the server changes above.
 
 ## [0.2.4] - 2026-10-19
 
