@@ -218,7 +218,13 @@ never flagged for PII or injection). The server itself has no such cap.
   text unscanned, verdict `error` with `SECRET_SCAN_TIMEOUT`. This is deliberate
   (withholding the output was tried and dropped) and it means an adversary, or
   just a huge input, can push text past the scanner. Thousands of matches are
-  slow even below the limit.
+  slow even below the limit (100 KB of JSON with 5000 secrets took about 12 s
+  in one measurement).
+- **Very long unbroken runs no longer stall the scan.** A base64 blob, a hash or
+  a bundle without spaces used to make the context pass quadratic (a 20 KB run
+  took about 10 s). Runs of 256 or more name characters are now masked for the
+  context rules and restored afterwards (20 KB: 0.06 s, 100 KB: 0.15 s), and a
+  secret next to or inside one is still redacted (required self-test cases).
 - **No gitleaks or `jq`**: the deterministic passes still run; gitleaks'
   vendor-format coverage is lost, with a log line.
 - **A secret `error` leaves secrets in `/v1/scan`'s `redacted_text`** (the
