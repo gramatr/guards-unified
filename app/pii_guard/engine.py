@@ -17,46 +17,31 @@ import logging
 from presidio_analyzer import AnalyzerEngine
 from presidio_anonymizer import AnonymizerEngine
 
-from pii_guard.config import LANGUAGE
+from pii_guard.config import ENTITIES, LANGUAGE, MIN_SCORE
 
 logger = logging.getLogger("pii_guard")
 
 _analyzer = None
 _anonymizer = None
 
-# Presidio's full default entity set includes DATE_TIME, URL, and NRP
-# (nationality/religious/political group) — found empirically by running
-# this for real: "The quarterly report is due next Friday." gets flagged
-# as containing PII (DATE_TIME matched "quarterly" and "next Friday").
-# A plain date is not sensitive on its own, and that false-positive rate
-# would make this tool noise, not signal. Restricted to the entity types
-# the design spec actually called for — deliberately excludes DATE_TIME,
-# URL, NRP, CRYPTO, and other low-signal defaults Presidio ships but
-# this tool never asked for.
-#
-# ORGANIZATION is NOT in this list, even though the design spec called
-# for it — found empirically: Presidio's default SpacyRecognizer's
-# `supported_entities` is `['PERSON', 'DATE_TIME', 'LOCATION', 'NRP']`.
-# There is no ORG/ORGANIZATION in that list at all. Requesting it in
-# `analyze(entities=...)` doesn't error, it just silently never fires —
-# exactly the "looks right, wrong in a way only running it reveals"
-# failure the verify-by-running-not-reading standard exists to catch.
-# Enabling it requires adding a custom NlpEngine entity mapping, not
-# done here — tracked in README "Known limitations," not silently
-# claimed as supported.
-ENTITIES = [
-    "PERSON",
-    "LOCATION",
-    "EMAIL_ADDRESS",
-    "PHONE_NUMBER",
-    "US_SSN",
-    "US_DRIVER_LICENSE",
-    "US_PASSPORT",
-    "US_BANK_NUMBER",
-    "CREDIT_CARD",
-    "IBAN_CODE",
-    "IP_ADDRESS",
-]
+# The entity list and the minimum score come from pii_guard.config (PII_ENTITIES,
+# PII_MIN_SCORE). Presidio's full default set also includes DATE_TIME, URL and
+# NRP, which would flag "next Friday" as PII, and its pattern-only driver licence
+# and bank number recognizers fire on any long digit string; both are left out by
+# default (see config.py). ORGANIZATION is not supported by the default spaCy
+# recognizer (requesting it silently never fires), so it is not in the list.
+
+
+# spaCy's name recognizer reads identifiers such as a hyphenated pod name or a
+# resource id as a person (score 0.85). A name has no digit, underscore or slash
+# in it, so a PERSON span that does is an identifier and is dropped.
+_NOT_IN_A_NAME = set("0123456789_/\\")
+
+
+def _is_identifier_not_a_person(text: str, result) -> bool:
+    return result.entity_type == "PERSON" and any(
+        c in _NOT_IN_A_NAME for c in text[result.start : result.end]
+    )
 
 
 def load_engines() -> None:
@@ -78,7 +63,10 @@ def analyze_and_redact(text: str) -> dict:
     if _analyzer is None or _anonymizer is None:
         raise RuntimeError("load_engines() was not called before analyze_and_redact()")
 
-    results = _analyzer.analyze(text=text, language=LANGUAGE, entities=ENTITIES)
+    results = _analyzer.analyze(
+        text=text, language=LANGUAGE, entities=ENTITIES, score_threshold=MIN_SCORE
+    )
+    results = [r for r in results if not _is_identifier_not_a_person(text, r)]
     anonymized = _anonymizer.anonymize(text=text, analyzer_results=results)
 
     return {

@@ -101,9 +101,15 @@ characters and fullwidth `=` and `:` are normalised across the whole output
 
 ## PII
 
-- **English only**, with 11 entity types: `PERSON`, `LOCATION`,
-  `EMAIL_ADDRESS`, `PHONE_NUMBER`, `US_SSN`, `US_DRIVER_LICENSE`,
-  `US_PASSPORT`, `US_BANK_NUMBER`, `CREDIT_CARD`, `IBAN_CODE`, `IP_ADDRESS`.
+- **English only**, with 9 entity types by default: `PERSON`, `LOCATION`,
+  `EMAIL_ADDRESS`, `PHONE_NUMBER`, `US_SSN`, `US_PASSPORT`, `CREDIT_CARD`,
+  `IBAN_CODE`, `IP_ADDRESS`. `US_DRIVER_LICENSE` and `US_BANK_NUMBER` are off by
+  default (see [CONFIGURATION.md](CONFIGURATION.md): `PII_ENTITIES`) because their
+  recognizers are pattern-only and matched run ids, timestamps and PR numbers. A
+  match must score at least 0.4 (`PII_MIN_SCORE`), and a `PERSON` span that
+  contains a digit, underscore or slash is treated as an identifier, not a person.
+  A phone number sits right at the 0.4 floor, and a plain SSN-shaped number can come
+  back as a phone number instead of an SSN: expect misses, as the next paragraph says.
   Dates, URLs, nationality or religious or political group, crypto addresses
   and everything else Presidio can find are excluded on purpose (they
   produced false positives on engineering text). Organisation names are not

@@ -32,6 +32,12 @@ What was hardened, what was loosened and why is in
 
 ---
 
+## [Unreleased]
+
+### guards-unified
+
+- Fixed: the PII axis no longer raises a notice on run ids, epoch timestamps, PR numbers, 32-character hex ids, GUIDs or pod names. `US_DRIVER_LICENSE` and `US_BANK_NUMBER` are off by default (`PII_ENTITIES`), a match needs a score of 0.4 (`PII_MIN_SCORE`), and a `PERSON` span with a digit, underscore or slash is treated as an identifier. Names, emails, phone numbers, IP addresses and card numbers are still found, and hyphenated real names are kept. Tested in the real engine; the end-to-end test gains a noise case and a true-positive case.
+
 ## [0.2.5] - 2026-10-20
 
 ### guards-unified
