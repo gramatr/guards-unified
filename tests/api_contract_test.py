@@ -11,11 +11,14 @@ only.
 """
 
 import datetime
+import importlib
 import os
 import sys
 import tempfile
 import types
 from pathlib import Path
+
+from fastapi.testclient import TestClient
 
 if not hasattr(datetime, "UTC"):  # python < 3.11
     datetime.UTC = datetime.timezone.utc  # noqa: UP017
@@ -50,8 +53,7 @@ _stub("pii_guard.engine", analyze_and_redact=_analyze_and_redact)
 _stub("injection_guard")
 _stub("injection_guard.model", classify=lambda t: {"malicious": False, "score": 0.99, "chunks_scanned": 1})
 
-import main
-from fastapi.testclient import TestClient
+main = importlib.import_module("main")  # after the stubs are in place
 
 client = TestClient(main.app, raise_server_exceptions=False)
 TEXT = "owner: Alice Example\n"
