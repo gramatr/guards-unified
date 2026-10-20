@@ -94,6 +94,29 @@ expect_changed "skip-gitleaks: value inside a JSON string" "{\"body\":\"password
 expect_changed "skip-gitleaks: letters-only mixed-case value, braces" "{ token: KdZqMwLpXrVtNbHgFs }" SECRET_GUARD_SKIP_GITLEAKS=1  # guards:synthetic
 expect_changed "skip-gitleaks: camel-looking value with a digit" "const x = { secret: kdZqMwLp4Xr };" SECRET_GUARD_SKIP_GITLEAKS=1  # guards:synthetic
 expect_same    "skip-gitleaks: property holding a variable is code" "  accessToken: accessToken," SECRET_GUARD_SKIP_GITLEAKS=1  # guards:synthetic
+# Text that merely contains a key, a colon and an identifier-looking word is not code:
+# a log line, a shell string, a markdown or issue body, a message. Context pass only.
+G=SECRET_GUARD_SKIP_GITLEAKS=1
+expect_changed "skip-gitleaks: log line"                  '2026-10-20 12:00:01 INFO retry password: old_pass_word;' $G  # guards:synthetic
+expect_changed "skip-gitleaks: log line, trailing comma"  'WARN login failed token: refresh_token_val,' $G  # guards:synthetic
+expect_changed "skip-gitleaks: double-quoted shell string" 'echo "password: old_pass_word,"' $G  # guards:synthetic
+expect_changed "skip-gitleaks: single-quoted shell string" "curl -d 'password: old_pass_word,' host" $G  # guards:synthetic
+expect_changed "skip-gitleaks: markdown bullet"           '- The password: old_pass_word, as sent' $G  # guards:synthetic
+expect_changed "skip-gitleaks: issue body sentence"       'Steps: set secret: my_secret_value; then restart' $G  # guards:synthetic
+expect_same    "skip-gitleaks: object literal member chain" '  const o = { token: this.cfg.apiToken, n: 1 };' $G  # guards:synthetic
+expect_same    "skip-gitleaks: call argument"             '  login(user, { password: userPassword });' $G  # guards:synthetic
+
+# Very long unbroken runs (a base64 blob, a hash, a bundle without spaces) used to
+# take seconds per 10 KB in the context pass. They must scan quickly, a secret
+# after one must still be redacted, and the run itself must come back unchanged.
+LONG="$(head -c 20000 /dev/zero | tr '\0' 'a')"
+start=$SECONDS
+out="$(scan "$LONG" $G)"
+took=$((SECONDS - start))
+if [ "$out" = "$LONG" ] && [ "$took" -le 3 ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: long unbroken run: unchanged=$([ "$out" = "$LONG" ] && echo y || echo n) took ${took}s (limit 3s)"; fi
+expect_changed "secret after a long run is redacted"  "$LONG password: hunter2x" $G  # guards:synthetic
+expect_changed "long run as the value is redacted"    "password=$LONG" $G  # guards:synthetic
+if [ "$(scan "x $LONG y" $G)" = "x $LONG y" ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: long run in a sentence changed"; fi
 expect_changed "skip-gitleaks + env values still redacts"   "x $V y" SECRET_GUARD_SKIP_GITLEAKS=1 SECRET_GUARD_ENV_VALUES=1 DB_PASSWORD="$V"
 if command -v gitleaks >/dev/null 2>&1; then
   TOK='ghp_a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8'
