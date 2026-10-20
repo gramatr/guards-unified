@@ -176,6 +176,7 @@ def main() -> int:
         "json/punctuation-secret-key": '{"secretKey": "' + punct + '", "user": "bob"}',
         "yaml/quoted-with-spaces": 'password: "correct horse battery"',
         "yaml/next-line-scalar": "password:\n  " + pw,
+        "yaml/quoted-then-more-lines": 'password: "correct horse battery"\nthe next line stays\n',
         "yaml/single-quoted": "client_secret: 'Tq7vN2xLm9Kd4RzP8wYb'",
         "header/bearer": f"Authorization: Bearer {pw}",
         "header/basic": "authorization: Basic YWRtaW46c2VjcmV0cGFzcw==",
@@ -187,7 +188,7 @@ def main() -> int:
         "dsn/clickhouse": [pw], "dsn/https-userinfo": [pw],
         "env/special-chars": ["Xk9mQ4vT2p@Lw8RzN5bJc7Hd3"], "env/low-entropy": ["hunter2"],
         "json/punctuation-secret-key": [punct], "yaml/quoted-with-spaces": ["correct horse battery"],
-        "yaml/next-line-scalar": [pw], "yaml/single-quoted": [pw], "header/bearer": [pw], "header/basic": ["YWRtaW46c2VjcmV0cGFzcw=="],
+        "yaml/next-line-scalar": [pw], "yaml/quoted-then-more-lines": ["correct horse battery"], "yaml/single-quoted": [pw], "header/bearer": [pw], "header/basic": ["YWRtaW46c2VjcmV0cGFzcw=="],
         "query/access-token": [pw], "aws/secret-access-key": ["wJalrXUtnFEMIK7MDENGbPxRfiCYzzzzzzzzzzzz"],
     }
     # Batch B (guards-coordination#10) and P2 vendor shapes (#11).
@@ -259,6 +260,7 @@ def main() -> int:
         "benign/sha256-hex": "sha256:" + "ab12" * 16,
         "benign/heading-then-command": "Rotate the secret:\n  kubectl delete secret old",
         "benign/heading-then-nested-key": "secret:\n  name: db-creds",
+        "benign/quoted-keywords-across-lines": 'A heading that ended in "token:" then text\nline two\nline three\nand later "secret:" follows here\nlast line\n',
         "benign/pwd-env-line": "PWD=/usr/bin",
         "benign/pwd-label": "pwd: /tmp",
         "benign/word-containing-pass": "compass: northwest heading",
