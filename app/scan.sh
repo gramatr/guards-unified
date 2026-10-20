@@ -189,7 +189,11 @@ ALIAS='pw|pwd|pass|creds?|pat|client-key-data'
 KEY_A="${KEYCH}*(${KW})${KEYCH}*"
 KEY_B="(^|[^A-Za-z0-9_.-])(${KEYCH}*[_.-])?(${ALIAS})([_.-]${KEYCH}*)?"
 KEY_ANY="(${KEY_A}|(${KEYCH}*[_.-])?(${ALIAS})([_.-]${KEYCH}*)?)"
-DELIM='["'"'"']?[[:space:]]*[:=][[:space:]]*'
+# Blanks only, never newlines: a line that ends in "secret:" or "token:" is a
+# heading, not a key, and the next line's first word is not its value. With
+# [[:space:]] here a sentence ending in "secret:" redacted the first word of
+# the following line (found live, in the Bash output of the v0.2.2 check).
+DELIM='["'"'"']?[[:blank:]]*[:=][[:blank:]]*'
 V_DQ='(\\.|[^"\\]){4,}'
 V_SQ="(\\\\.|[^'\\\\]){4,}"
 V_BARE='[^[:space:]"'"'"']{4,}'
