@@ -58,7 +58,9 @@ SCAN_SH = APP_DIR / "scan.sh"
 
 # Returned in place of the text whenever a confirmed secret finding could not
 # be redacted. Failing closed: never ship text we know contains a secret.
-REDACTION_WITHHELD = "***REDACTED:SECRET*** (secret-guard could not safely redact this output; withheld)"
+REDACTION_WITHHELD = (
+    "***REDACTED:SECRET*** (secret-guard could not safely redact this output; withheld)"
+)
 
 # Purely local, personal-use metrics — never transmitted anywhere, never
 # shared. Distinct from any community or governance telemetry, which would
@@ -103,7 +105,9 @@ def _log_metric(finding: dict) -> None:
 
 @asynccontextmanager
 async def _lifespan(_: FastAPI):
-    logger.info("Loading pii-guard (Presidio) and injection-guard (Prompt Guard 2) once at startup")
+    logger.info(
+        "Loading pii-guard (Presidio) and injection-guard (Prompt Guard 2) once at startup"
+    )
     pii_engine.load_engines()
     injection_model.load_model()
     yield
@@ -137,7 +141,12 @@ def _enforce_size(text: str, limit: int, env_name: str) -> None:
     if size > limit:
         raise HTTPException(
             status_code=413,
-            detail={"error": "text_too_large", "bytes": size, "limit_bytes": limit, "setting": env_name},
+            detail={
+                "error": "text_too_large",
+                "bytes": size,
+                "limit_bytes": limit,
+                "setting": env_name,
+            },
         )
 
 
@@ -162,7 +171,7 @@ def about() -> dict:
         "model_revision": injection_model.config.MODEL_REVISION,
         "attribution": "Built with Llama",
         "license_notice": "Llama 4 is licensed under the Llama 4 Community License, "
-                           "Copyright © Meta Platforms, Inc. All Rights Reserved.",
+        "Copyright © Meta Platforms, Inc. All Rights Reserved.",
         "license_url": "https://www.llama.com/llama4/license/",
     }
 
@@ -199,13 +208,18 @@ def _scan_secrets(text: str) -> dict:
             # Second line of defence behind scan.sh's own check: a
             # confirmed finding must never ship back unchanged text.
             # Withhold instead.
-            logger.error("secret finding with unchanged redacted_text, withholding output")
+            logger.error(
+                "secret finding with unchanged redacted_text, withholding output"
+            )
             detail["redacted_text"] = REDACTION_WITHHELD
             detail["redaction_failed"] = True
         return {
             "type": "secret",
             "verdict": "found" if findings else "clean",
-            "reason_code": [f"SECRET_{f.get('RuleID', 'UNKNOWN').upper()}" for f in findings] or None,
+            "reason_code": [
+                f"SECRET_{f.get('RuleID', 'UNKNOWN').upper()}" for f in findings
+            ]
+            or None,
             "detail": detail,
         }
     except subprocess.TimeoutExpired:
@@ -214,10 +228,20 @@ def _scan_secrets(text: str) -> dict:
         # the output instead was tried and dropped: it takes a user's whole
         # result away, which is a worse trade than a rare unscanned output.
         logger.error("secret scan timed out after 15s, text left unscanned")
-        return {"type": "secret", "verdict": "error", "reason_code": ["SECRET_SCAN_TIMEOUT"], "detail": {"error": "timeout"}}
+        return {
+            "type": "secret",
+            "verdict": "error",
+            "reason_code": ["SECRET_SCAN_TIMEOUT"],
+            "detail": {"error": "timeout"},
+        }
     except Exception as e:
         logger.exception("secret scan failed")
-        return {"type": "secret", "verdict": "error", "reason_code": None, "detail": {"error": str(e)}}
+        return {
+            "type": "secret",
+            "verdict": "error",
+            "reason_code": None,
+            "detail": {"error": str(e)},
+        }
     finally:
         Path(findings_path).unlink(missing_ok=True)
 
@@ -225,16 +249,26 @@ def _scan_secrets(text: str) -> dict:
 def _scan_pii(text: str) -> dict:
     try:
         result = pii_engine.analyze_and_redact(text)
-        reason_codes = sorted({f"PII_{e['entity_type']}" for e in result["entities"]}) or None
+        reason_codes = (
+            sorted({f"PII_{e['entity_type']}" for e in result["entities"]}) or None
+        )
         return {
             "type": "pii",
             "verdict": "found" if result["found"] else "clean",
             "reason_code": reason_codes,
-            "detail": {"redacted_text": result["redacted_text"], "entities": result["entities"]},
+            "detail": {
+                "redacted_text": result["redacted_text"],
+                "entities": result["entities"],
+            },
         }
     except Exception as e:
         logger.exception("pii scan failed")
-        return {"type": "pii", "verdict": "error", "reason_code": None, "detail": {"error": str(e)}}
+        return {
+            "type": "pii",
+            "verdict": "error",
+            "reason_code": None,
+            "detail": {"error": str(e)},
+        }
 
 
 def _classify_injection(text: str) -> dict:
@@ -243,12 +277,22 @@ def _classify_injection(text: str) -> dict:
         return {
             "type": "injection",
             "verdict": "malicious" if result["malicious"] else "clean",
-            "reason_code": ["INJECTION_OVERRIDE_OR_JAILBREAK"] if result["malicious"] else None,
-            "detail": {"score": result["score"], "chunks_scanned": result["chunks_scanned"]},
+            "reason_code": ["INJECTION_OVERRIDE_OR_JAILBREAK"]
+            if result["malicious"]
+            else None,
+            "detail": {
+                "score": result["score"],
+                "chunks_scanned": result["chunks_scanned"],
+            },
         }
     except Exception as e:
         logger.exception("injection classification failed")
-        return {"type": "injection", "verdict": "error", "reason_code": None, "detail": {"error": str(e)}}
+        return {
+            "type": "injection",
+            "verdict": "error",
+            "reason_code": None,
+            "detail": {"error": str(e)},
+        }
 
 
 @app.post("/v1/scan/secret")
@@ -264,7 +308,11 @@ def scan_secret(req: ScanRequest) -> dict:
     _enforce_size(req.text, SCAN_SECRET_MAX_BYTES, "SCAN_SECRET_MAX_BYTES")
     secret_result = _scan_secrets(req.text)
     _log_metric(secret_result)
-    redacted = secret_result["detail"]["redacted_text"] if secret_result["verdict"] == "found" else req.text
+    redacted = (
+        secret_result["detail"]["redacted_text"]
+        if secret_result["verdict"] == "found"
+        else req.text
+    )
     return {"findings": [secret_result], "redacted_text": redacted}
 
 

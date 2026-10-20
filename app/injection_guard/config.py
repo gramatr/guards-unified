@@ -6,14 +6,20 @@ import os
 
 HOST = os.environ.get("INJECTION_GUARD_HOST", "127.0.0.1")
 PORT = int(os.environ.get("INJECTION_GUARD_PORT", "8730"))
-MODEL_ID = os.environ.get("INJECTION_GUARD_MODEL_ID", "meta-llama/Llama-Prompt-Guard-2-86M")
+MODEL_ID = os.environ.get(
+    "INJECTION_GUARD_MODEL_ID", "meta-llama/Llama-Prompt-Guard-2-86M"
+)
 
 # The model download is pinned to the revision this project evaluated, so an
 # upstream change to the model repository cannot change the detector without a
 # commit here. It applies only to the default model; another INJECTION_GUARD_MODEL_ID
 # follows the repository default branch unless INJECTION_GUARD_MODEL_REVISION is set.
 RECOMMENDED_MODEL_REVISION = "a8ded8e697ce7c355e395a0df51f94adb4a2fd27"
-_default_revision = RECOMMENDED_MODEL_REVISION if MODEL_ID == "meta-llama/Llama-Prompt-Guard-2-86M" else "main"
+_default_revision = (
+    RECOMMENDED_MODEL_REVISION
+    if MODEL_ID == "meta-llama/Llama-Prompt-Guard-2-86M"
+    else "main"
+)
 MODEL_REVISION = os.environ.get("INJECTION_GUARD_MODEL_REVISION", _default_revision)
 
 # When set, every request must carry `Authorization: Bearer <token>`.

@@ -66,7 +66,7 @@ them. Setting them has no effect.
 | `PII_GUARD_HOST`, `PII_GUARD_PORT` | `127.0.0.1`, `8731` | Same. |
 | `INJECTION_GUARD_AUTH_TOKEN` | unset | Defined in the injection config, but no code in this app reads it. **The server enforces no authentication whatsoever**, whatever you set. |
 
-`app/report.sh` is also shipped in the image but is not called by the server.
+`app/report.sh` is also shipped in the image but is not called by the server. If you use it, `REPORT_WEBHOOK_PATH` sets the webhook flow path it posts to (default `soc2/secret-leak-to-zammad`).
 It is a reporting helper inherited from secret-guard. Given findings metadata,
 it posts it to a workflow webhook if its `KESTRA_*` webhook variables are set,
 and otherwise appends it to a local log (`SECRET_GUARD_LOCAL_LOG`). It also

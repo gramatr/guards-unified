@@ -37,6 +37,7 @@ step() { # step LABEL CMD...
 
 echo "lint"
 command -v ruff >/dev/null 2>&1 && step "ruff app/ tests/" ruff check app/ tests/
+command -v ruff >/dev/null 2>&1 && step "ruff format app/ tests/" ruff format --check app/ tests/
 command -v shellcheck >/dev/null 2>&1 && step "shellcheck scripts" shellcheck -S warning app/scan.sh tests/*.sh
 
 echo "PII validators and merge logic (pure python; Presidio stubbed)"

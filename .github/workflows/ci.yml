@@ -26,8 +26,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install ruff fastapi httpx pydantic
+      - run: pip install ruff==0.17.1 fastapi httpx pydantic
       - run: ruff check app/ tests/
+      - run: ruff format --check app/ tests/
       - name: Dockerfile pins
         # No floating tags for external images (uv, base images).
         run: bash tests/dockerfile_pins_test.sh

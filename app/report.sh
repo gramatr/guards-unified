@@ -14,7 +14,9 @@
 # — no secret values, by construction (scan.sh never writes them there).
 #
 # Required env: SECRET_GUARD_SOURCE (ci | pr | claude-code-live-session | ...)
-# Optional env: SECRET_GUARD_FILE, SECRET_GUARD_REPO, SECRET_GUARD_CONTEXT
+# Optional env: SECRET_GUARD_FILE, SECRET_GUARD_REPO, SECRET_GUARD_CONTEXT,
+# REPORT_WEBHOOK_PATH (the webhook flow path under /api/v1/executions/webhook/,
+# default soc2/secret-leak-to-zammad)
 #
 # Fail-open: if KESTRA_PUBLIC_URL / KESTRA_WEBHOOK_KEY_SECRET_LEAK aren't
 # set, this logs a line to SECRET_GUARD_LOCAL_LOG (default
@@ -53,7 +55,7 @@ echo "$FINDINGS" | jq -c '.[]' | while read -r finding; do
     '{source: $source, repo: $repo, file: $file, rule_id: $rule_id, line: $line, context: $context, fingerprint: $fingerprint}')
 
   curl -sS -X POST \
-    "${KESTRA_PUBLIC_URL}/api/v1/executions/webhook/soc2/secret-leak-to-zammad/${KESTRA_WEBHOOK_KEY_SECRET_LEAK}" \
+    "${KESTRA_PUBLIC_URL}/api/v1/executions/webhook/${REPORT_WEBHOOK_PATH:-soc2/secret-leak-to-zammad}/${KESTRA_WEBHOOK_KEY_SECRET_LEAK}" \
     -H "Content-Type: application/json" \
     -d "$payload" \
     >/dev/null \

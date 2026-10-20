@@ -77,7 +77,10 @@ def load_engines() -> None:
         return
     from presidio_analyzer import AnalyzerEngine
 
-    logger.info("Loading Presidio AnalyzerEngine (this happens once, not per request); PII_ENGINE=%s", ENGINE)
+    logger.info(
+        "Loading Presidio AnalyzerEngine (this happens once, not per request); PII_ENGINE=%s",
+        ENGINE,
+    )
     _analyzer = AnalyzerEngine()
     if ENGINE == "presidio":
         from presidio_anonymizer import AnonymizerEngine
@@ -97,7 +100,10 @@ def _analyze_validators(text: str) -> tuple[str, list]:
             for r in results
             if not _is_identifier_not_a_person(text, r) and filters.keep_result(text, r)
         ]
-    spans = merge_spans(presidio, validators.find_pii(text, [e for e in ENTITIES if e in validators.KINDS]))
+    spans = merge_spans(
+        presidio,
+        validators.find_pii(text, [e for e in ENTITIES if e in validators.KINDS]),
+    )
     return redact(text, spans), spans
 
 
@@ -105,9 +111,15 @@ def _analyze_presidio(text: str) -> tuple[str, list]:
     results = _analyzer.analyze(
         text=text, language=LANGUAGE, entities=ENTITIES, score_threshold=MIN_SCORE
     )
-    results = [r for r in results if not _is_identifier_not_a_person(text, r) and filters.keep_result(text, r)]
+    results = [
+        r
+        for r in results
+        if not _is_identifier_not_a_person(text, r) and filters.keep_result(text, r)
+    ]
     anonymized = _anonymizer.anonymize(text=text, analyzer_results=results)
-    return anonymized.text, [validators.Span(r.entity_type, r.start, r.end, r.score) for r in results]
+    return anonymized.text, [
+        validators.Span(r.entity_type, r.start, r.end, r.score) for r in results
+    ]
 
 
 def analyze_and_redact(text: str) -> dict:
@@ -118,12 +130,19 @@ def analyze_and_redact(text: str) -> dict:
     if _analyzer is None or (ENGINE == "presidio" and _anonymizer is None):
         raise RuntimeError("load_engines() was not called before analyze_and_redact()")
 
-    redacted, spans = (_analyze_presidio if ENGINE == "presidio" else _analyze_validators)(text)
+    redacted, spans = (
+        _analyze_presidio if ENGINE == "presidio" else _analyze_validators
+    )(text)
     return {
         "found": len(spans) > 0,
         "redacted_text": redacted,
         "entities": [
-            {"entity_type": s.entity_type, "start": s.start, "end": s.end, "score": s.score}
+            {
+                "entity_type": s.entity_type,
+                "start": s.start,
+                "end": s.end,
+                "score": s.score,
+            }
             for s in spans
         ],
     }
