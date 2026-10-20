@@ -263,6 +263,21 @@ def main() -> int:
     for cname, (text, material) in quoted_values.items():
         check(cname, text, material, required=True)
 
+    # A key whose LAST segment is the credential or a value word is a real
+    # secret even when it has the same leading words as the reference keys above.
+    sv = "Zq8xK2mNp4Lw9vTd"
+    last_segment_secrets = {
+        "last-segment/auth-token": f"AUTH_TOKEN={sv}",  # guards:synthetic
+        "last-segment/db-password": f'db_password: "{sv}"',  # guards:synthetic
+        "last-segment/api-secret": f'api_secret: "{sv}"',  # guards:synthetic
+        "last-segment/client-secret-value": f'client_secret_value: "{sv}"',  # guards:synthetic
+        "last-segment/client-secret-value-camel": f'clientSecretValue: "{sv}"',  # guards:synthetic
+        "last-segment/secret-key": f'secret_key: "{sv}"',  # guards:synthetic
+        "last-segment/secret-valid-not-id": f'secretValid: "{sv}"',  # guards:synthetic
+    }
+    for cname, text in last_segment_secrets.items():
+        check(cname, text, [sv], required=True)
+
     # Harmless lookalikes must come back byte-identical and not be flagged.
     benign = {
         "benign/placeholder": "password: ${DB_PASSWORD}",
@@ -271,6 +286,15 @@ def main() -> int:
         "benign/prose": "The secret to good tests is isolation.",
         "benign/url-without-password": "https://github.com/gramatr/guards-unified",
         "benign/token-count": "token_count: 1234",
+        # Keys naming an identifier or reference of a secret, with extra segments
+        # before the descriptor. Values are fixture ids, not credentials.
+        "benign/ref-key-snake-id": 'client_secret_bws_id: "bws-secret-id-123"',  # guards:synthetic
+        "benign/ref-key-camel-id": 'clientSecretBwsId: "bws-secret-id-123"',  # guards:synthetic
+        "benign/ref-key-caps-id": "CLIENT_SECRET_BWS_ID=bws-secret-id-123",  # guards:synthetic
+        "benign/ref-key-vault-id": 'secret_vault_id = "vault-ref-9a1"',  # guards:synthetic
+        "benign/ref-key-store-ref": 'token_store_ref: "store-ref-77"',  # guards:synthetic
+        "benign/ref-key-provider-arn": 'credential_provider_arn: "arn:aws:iam::123456789012:role/example"',  # guards:synthetic
+        "benign/ref-key-secretkeyref": 'secretKeyRef: {name: db-creds, key: password}',
         "benign/plural-heading-code-span": "Query-string tokens: `access_token=`, presigned URLs",
         "benign/base64-sentence": '{"note": "' + base64.b64encode(b"The quick brown fox jumps over the lazy dog and keeps running far away").decode() + '"}',
         "benign/base64-binary": '{"img": "' + base64.b64encode(bytes(range(256)) * 2).decode() + '"}',
