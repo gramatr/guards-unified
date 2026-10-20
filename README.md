@@ -61,8 +61,9 @@ that cannot wait on them should call `/v1/scan/secret` and decide separately
 how much text to send for the other two axes. The server itself always scans
 whatever it is sent.
 
-**There is no authentication and no request size limit.** Bind it to
-loopback or an equally private network. See
+**There is no authentication.** Bind it to loopback or an equally private
+network. Request bodies are capped (`/v1/scan` at 64 KiB of text,
+`/v1/scan/secret` at 1 MiB; over the cap is HTTP 413), both adjustable. See
 [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ## What the secret axis detects
@@ -283,7 +284,8 @@ docker run -p 127.0.0.1:8700:8700 \
 ```
 
 Publish the port on `127.0.0.1` as shown. The server listens on `0.0.0.0`
-inside the container, has no authentication and no request size limit, and
+inside the container, has no authentication, caps request bodies only at the
+sizes in [docs/CONFIGURATION.md](docs/CONFIGURATION.md), and
 receives raw text that may contain secrets.
 
 The injection model (`meta-llama/Llama-Prompt-Guard-2-86M`) is gated on

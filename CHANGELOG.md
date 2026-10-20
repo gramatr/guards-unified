@@ -32,6 +32,21 @@ What was hardened, what was loosened and why is in
 
 ---
 
+## [Unreleased]
+
+### guards-unified
+
+- Added: request size caps in UTF-8 bytes of `text`, `SCAN_FULL_MAX_BYTES`
+  (default 65,536) on `/v1/scan` and `SCAN_SECRET_MAX_BYTES` (default
+  1,048,576) on `/v1/scan/secret`. Over the cap is HTTP 413. A request could
+  previously keep the service busy long after its client gave up.
+- Fixed: an error in the second PII pass of `/v1/scan` returned HTTP 500 and
+  dropped every finding. It now falls back to the secret-redacted text.
+- Changed: `/v1/scan` now redacts PII in `redacted_text` when the secret scan
+  errored (it used to return the untouched original). Secrets stay unredacted
+  on a scan error, as before.
+- Tests: `tests/api_contract_test.py`, both models stubbed, run in CI.
+
 ## [0.2.3] - 2026-10-19
 
 ### guards-unified (#15, #16)

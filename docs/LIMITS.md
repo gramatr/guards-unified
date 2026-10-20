@@ -157,11 +157,13 @@ never flagged for PII or injection). The server itself has no such cap.
   slow even below the limit.
 - **No gitleaks or `jq`**: the deterministic passes still run; gitleaks'
   vendor-format coverage is lost, with a log line.
-- **A secret `error` also means no PII redaction** in `/v1/scan`'s
-  `redacted_text`.
-- **A PII fault in the final pass of `/v1/scan` is an unhandled HTTP 500**
-  (read from the code, not exercised).
-- **No authentication, no TLS, no rate limit and no request size limit.** Treat
+- **A secret `error` leaves secrets in `/v1/scan`'s `redacted_text`** (the
+  caller keeps the original text); PII is still redacted there.
+- **A PII fault in the final pass of `/v1/scan`** is logged and
+  `redacted_text` falls back to the secret-redacted text (200, not a 500).
+- **No authentication, no TLS, no rate limit, and no per-request time budget
+  for the model axes.** Request size is capped (413 over 64 KiB on `/v1/scan`,
+  1 MiB on `/v1/scan/secret`), but the body is read before it is checked. Treat
   the port as an internal, loopback-only interface.
 - The metrics file is never rotated.
 
@@ -170,8 +172,9 @@ never flagged for PII or injection). The server itself has no such cap.
 - CI cannot start the full service: the injection model is a gated download.
   CI builds the CPU image and runs the redaction self-test against its
   `scan.sh`, and calls the secret route function directly inside the image.
-  **No automated test exercises `/v1/scan`, the PII engine or the injection
-  model end to end**, and nothing tests the 500 path. A live
+  **No automated test exercises the real PII engine or injection model end to
+  end.** `tests/api_contract_test.py` covers the size caps and what a failing
+  axis does, with both models stubbed. A live
   `tests/redaction_selftest.py --endpoint` run after a release covers the
   secret axis only.
 - The tests use only fabricated values. They pin what is covered (a required

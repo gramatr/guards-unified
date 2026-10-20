@@ -2,8 +2,8 @@
 
 The contract of guards-unified v0.2.3, from `app/main.py`. The service is a
 FastAPI app, listens on port 8700 in the container, speaks JSON, and has **no
-authentication and no request size limit**; bind it to loopback (see
-[CONFIGURATION.md](CONFIGURATION.md)).
+authentication**; bind it to loopback (see
+[CONFIGURATION.md](CONFIGURATION.md)). Request size is capped per route.
 
 | Route | Method | Purpose |
 |---|---|---|
@@ -23,7 +23,11 @@ Both POST routes take the same body.
 {"text": "the text to scan"}
 ```
 
-`text` is a required string of any length. There is no other field and no way
+`text` is a required string. Its size is capped in UTF-8 bytes: 65,536 on
+`/v1/scan` and 1,048,576 on `/v1/scan/secret` by default (settings
+`SCAN_FULL_MAX_BYTES` and `SCAN_SECRET_MAX_BYTES`). Over the cap the route
+answers `413` with `{"detail": {"error": "text_too_large", "bytes": ..., "limit_bytes": ..., "setting": ...}}`
+and scans nothing. There is no other field and no way
 to select rules or switches per request (those are
 [container environment](CONFIGURATION.md)). A body that is not valid JSON of
 this shape gets FastAPI's standard `422` response.
@@ -190,11 +194,10 @@ with the original text standing in for a redaction.
 
 1. **Any finding with verdict `error`.** A secret `error` (including the 15 s
    timeout) means the text was not scanned for secrets: on `/v1/scan/secret`
-   `redacted_text` is the original, and on `/v1/scan` it is also the original
-   and **PII is not redacted either**, because PII redaction is skipped when
-   the secret axis errors. Do not use `redacted_text` as safe output when any
-   finding has verdict `error`. (A PII failure usually surfaces as an HTTP
-   `500` rather than an `error` finding, see below.)
+   `redacted_text` is the original. On `/v1/scan` it still has PII redacted,
+   but any secret in it is not. If the PII pass fails, it holds only what the
+   secret axis redacted. Do not use `redacted_text` as safe output when any
+   finding has verdict `error`.
 2. **The withheld placeholder.** If `redacted_text` is the placeholder above (or
    `redaction_failed` is true), the content is safe but gone; there is no
    partial result.
@@ -216,14 +219,16 @@ with the original text standing in for a redaction.
 | Situation | Result |
 |---|---|
 | Invalid body | `422` (FastAPI default). |
+| `text` over the route's size cap | `413`, nothing scanned. Body: `{"detail": {"error": "text_too_large", "bytes", "limit_bytes", "setting"}}`. |
 | Secret scan exceeds 15 s | `200`; secret finding verdict `error`, `SECRET_SCAN_TIMEOUT`. Fails open. |
 | Secret scan raises | `200`; secret finding verdict `error`, `reason_code` null, message in `detail.error`. |
 | PII or injection detector raises on the first call | `200`; that finding has verdict `error`, the other axes still report. |
-| PII redaction raises in the final pass of `/v1/scan` | **`500`.** That second call is not wrapped in error handling. Not exercised in tests. |
+| PII redaction raises in the final pass of `/v1/scan` | `200`. The error is logged and `redacted_text` is the text as redacted by the secret axis. (Before the request-limit fix this was an HTTP 500.) |
 | A model failed to load | The process does not start. |
 
-All of the above is read from the code; the `500` and `422` paths were not run
-for this document.
+The size-cap, secret-error and PII-fault rows are pinned by
+`tests/api_contract_test.py` (models stubbed). The rest is read from the code;
+the `422` path was not run for this document.
 
 ## Metrics
 

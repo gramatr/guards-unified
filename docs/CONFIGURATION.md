@@ -20,6 +20,8 @@ file. Defaults below are read from the code at v0.2.3.
 | `METRICS_PATH` | `/app/metrics/metrics.jsonl` | server | File that `POST /v1/scan` and `POST /v1/scan/secret` append one JSON line per finding to (`ts`, `type`, `verdict`, `reason_code` only). The parent directory is created if missing; a write failure is logged and ignored. Never rotated. |
 | `INJECTION_GUARD_DEVICE` | `auto` (`cpu` in the `:cpu` image) | server | `auto` uses CUDA if PyTorch sees a GPU, else CPU. `cpu` forces CPU. `cuda` forces GPU and makes startup fail if none is visible. |
 | `INJECTION_GUARD_MODEL_ID` | `meta-llama/Llama-Prompt-Guard-2-86M` | server | Hugging Face model for the injection axis. Any other value logs a warning at startup: nothing in this project has evaluated it. Reported by `GET /about` as `model`. |
+| `SCAN_FULL_MAX_BYTES` | `65536` | server | Largest `text` (UTF-8 bytes) `POST /v1/scan` accepts; larger gets HTTP 413. Low on purpose: the PII and injection models cost about 0.25 s per KB and a running request cannot be cancelled. Callers that want the model axes should send a short prefix. |
+| `SCAN_SECRET_MAX_BYTES` | `1048576` | server | Largest `text` `POST /v1/scan/secret` accepts; larger gets HTTP 413. Higher because this route is cheap and callers send whole tool outputs. |
 | `SECRET_GUARD_B64` | `1` | scan.sh | `0` turns off the base64-blob pass. |
 | `SECRET_GUARD_SKIP_GITLEAKS` | `0` | scan.sh | `1` skips gitleaks and runs only the deterministic passes. |
 | `SECRET_GUARD_REDACT_KEY_IDS` | `0` | scan.sh | `1` also redacts access-key and client IDs. |
@@ -71,10 +73,11 @@ The scan language for PII is fixed at English (`en`) in code.
 ## Network and security posture
 
 - **No authentication.** Every route is open to anyone who can reach the port.
-- **No request size limit.** `ScanRequest` has a single `text` field of
-  unbounded length, and no limit is configured in the app. Whatever limits
-  uvicorn's defaults impose apply; none is documented here. A very large body
-  costs time and memory (see below).
+- **Request size is capped per route** (`SCAN_FULL_MAX_BYTES`,
+  `SCAN_SECRET_MAX_BYTES`, see above). The check runs after the body has been
+  parsed, so a very large body still costs memory to read; it no longer costs
+  model time. There is no rate limit and no per-request time budget for the
+  model axes.
 - **Binds to `0.0.0.0` inside the container, on port 8700.** Publish it to the
   host on loopback only: `-p 127.0.0.1:8700:8700`. Do not expose it to a
   network you do not fully trust: it receives raw text that may contain
@@ -98,7 +101,7 @@ Hard-coded; none is configurable.
 | Private-key matches per scan | 100,000 loop iterations | Past that, further keys are not redacted by the deterministic pass. |
 | Context rules | no cap on matches | Linear time; 300 distinct secret lines are all redacted (tested). Thousands of matches are still slow (about 22 s for 500 KB with 2,000 secrets in one measurement by the maintainers; not re-measured). |
 | Injection window | 512 tokens, 32-token overlap (480-token step) | Longer text is split into windows; every window is classified, and any malicious window flags the whole input. There is no cap on the number of windows, so cost grows with input size. Each window is also truncated to 512 tokens. |
-| PII text length | no limit set by this app | Not verified: the underlying NLP library has its own maximum text length, and an input beyond it may make the PII axis return verdict `error`. |
+| PII text length | 64 KiB on `/v1/scan` by default (`SCAN_FULL_MAX_BYTES`) | Not verified: the underlying NLP library has its own maximum text length, and an input beyond it may make the PII axis return verdict `error`. |
 | `/v1/scan/secret` latency | tens of milliseconds | The code's docstring says about 30 ms; the maintainers measured 55 to 60 ms per call in the production image. Neither was re-measured here. Grows with input size and with the number of rules that match. |
 | `/v1/scan` latency | about 0.25 s per KB | Dominated by the PII and injection models on CPU. A GPU speeds up the injection model only. |
 
