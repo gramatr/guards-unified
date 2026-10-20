@@ -256,6 +256,8 @@ def main() -> int:
         "benign/base64-binary": '{"img": "' + base64.b64encode(bytes(range(256)) * 2).decode() + '"}',
         "benign/git-hash": "commit 3f2a9c1e5b7d4a6082f1c3e5a7b9d1f3e5a7c9b1 Author: x",
         "benign/sha256-hex": "sha256:" + "ab12" * 16,
+        "benign/pwd-env-line": "PWD=/usr/bin",
+        "benign/pwd-label": "pwd: /tmp",
         "benign/word-containing-pass": "compass: northwest heading",
         "benign/pass-true": "pass: true",
         "benign/tests-pass-prose": "all the tests pass: 12 of 12 ran",

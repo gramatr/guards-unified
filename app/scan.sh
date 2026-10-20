@@ -93,6 +93,11 @@ CTX_TEXT="$(printf '%s' "$CTX_TEXT" | LC_ALL=C sed -E \
 ctx_placeholder() {
   [[ "$1" =~ ^(\$|\<|\{|%\(|\*\*\*|\.\.\.) ]] && return 0
   [[ "$1" =~ ^(x+|\*+|\.+|-+|_+|true|false|null|none|nil|yes|no|undefined|empty|redacted|changeme|change-me|example|todo|tbd|string|password|secret|token)$ ]] && return 0
+  # An absolute path that exists is a path, not a password. This is what
+  # `env`, `printenv PWD`, `export -p` and a "pwd: /home/..." line print: the
+  # key PWD is a real password alias (ODBC "Pwd=..."), but its value here is
+  # the working directory (found live: those lines were redacted).
+  [[ "$1" == /* ]] && [ -e "$1" ] && return 0
   return 1
 }
 # Keys that merely NAME or describe a secret (secretName, token_type, ...).
