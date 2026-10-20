@@ -18,7 +18,7 @@ import types
 from pathlib import Path
 
 if not hasattr(datetime, "UTC"):  # python < 3.11
-    datetime.UTC = datetime.timezone.utc
+    datetime.UTC = datetime.timezone.utc  # noqa: UP017
 
 APP = Path(__file__).resolve().parent.parent / "app"
 sys.path.insert(0, str(APP))
@@ -50,8 +50,8 @@ _stub("pii_guard.engine", analyze_and_redact=_analyze_and_redact)
 _stub("injection_guard")
 _stub("injection_guard.model", classify=lambda t: {"malicious": False, "score": 0.99, "chunks_scanned": 1})
 
-import main  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
+import main
+from fastapi.testclient import TestClient
 
 client = TestClient(main.app, raise_server_exceptions=False)
 TEXT = "owner: Alice Example\n"
