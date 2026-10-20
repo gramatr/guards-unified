@@ -46,6 +46,7 @@ Changes that deliberately accepted a miss, or removed over-eager detection.
 | #13 | v0.2.2 | Same rule in the key-name rules: an absolute path that exists is not a password. | `PWD` is a genuine password alias (ODBC), so the `PWD=...` lines that `env` and `export -p` print were still redacted. The value is checked, not just the key. | Depends on what exists where the scan runs; a path that exists only on the caller's machine is judged by the container's filesystem. A non-existent path-shaped value, and a non-path `PWD` value, are still redacted (tested). |
 | #15 | v0.2.3 | Key/value delimiter allows blanks (space, tab) only, never a newline. | A heading ending in a keyword and a colon, followed by an indented line, had the next line's first word redacted. | **Removed real protection**: a YAML scalar on the line after its key stopped being caught. The PR text called it rare for credentials and far more common for headings. |
 | #16 | v0.2.3 | A narrow YAML next-line rule restores the scalar case: the key line is only the key and a colon (optionally after `- `), the next line one indented bare token with no colon. | Recover what #15 removed without bringing the false positive back. Cost within noise (about -9 to +12 ms on 24 KB and 100 KB). | Residual: a heading that ends in a keyword and a colon followed by exactly one word is indistinguishable from a YAML scalar and still redacts that word. Alias keys are not covered by this form. |
+| (unreleased) | Unreleased | A quote-wrapped key word with its colon (`"token:"`) is not a value opener: when the key is preceded by the same quote and the colon follows it directly, the quoted-value rule skips it. Only for a colon, and only for the quoted styles. | `the "password:" field, then "some text"` had the text between the two quotes redacted. The two quote shapes differ: a real key closes its quote BEFORE the colon (`"password": "x"`, `"password":"x"`). | A malformed `"pw:"value"` (closing quote after the colon, value glued on) is no longer redacted; nested shell quoting (`"PASSWORD="x" cmd"`) is, because it uses `=`. Pinned by `tests/scan_options_test.sh` and the self-test. |
 | (before recreation) | v0.1.0 | Accepted risk: about 34 HIGH-severity CVEs in Go libraries bundled inside the upstream gitleaks binary are suppressed in `.trivyignore`. | No newer gitleaks release existed to upgrade to; the service only scans text and never feeds gitleaks an attacker-supplied module. | Revisit when gitleaks ships a fix; the suppression file records the rationale. |
 
 ## Design lessons that apply to the server
@@ -91,7 +92,9 @@ Changes that deliberately accepted a miss, or removed over-eager detection.
     (gitleaks hidden from `PATH`, no host paths) because a test that passed on a
     laptop failed in CI more than once.
 11. **Vendored copy parity.** The plugin carries a copy of `app/scan.sh`. A change
-    here needs a matching sync there; no check compares them.
+    here needs a matching sync there; the plugin's CI (`scan-sh-drift`) fails if
+    the copies differ, so a scanner PR here is not finished until the paired
+    plugin PR is.
 12. **Version and tag discipline.** A tag push is the only thing that publishes.
     Versions move in lockstep with the plugin. A burned number is skipped, never
     deleted or re-created.

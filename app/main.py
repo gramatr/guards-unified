@@ -61,9 +61,8 @@ SCAN_SH = APP_DIR / "scan.sh"
 REDACTION_WITHHELD = "***REDACTED:SECRET*** (secret-guard could not safely redact this output; withheld)"
 
 # Purely local, personal-use metrics — never transmitted anywhere, never
-# shared. Distinct from PROPOSAL.md's Track A (community telemetry) and
-# Track B (cpp-dwa governance telemetry), both still gated behind a
-# legal/product review that hasn't happened: this writes ONLY to a local
+# shared. Distinct from any community or governance telemetry, which would
+# need a legal/product review first: this writes ONLY to a local
 # file on whatever host runs the container, nothing leaves this process.
 # Same discipline DATA_HANDLING.md already names as safe for the hosted
 # tier's own metrics: aggregate counts only, NEVER the scanned text, not
@@ -197,8 +196,8 @@ def _scan_secrets(text: str) -> dict:
         detail = {"redacted_text": redacted_text, "rule_count": len(findings)}
         if findings and redacted_text == text:
             # Second line of defence behind scan.sh's own check: a
-            # confirmed finding must never ship back unchanged text
-            # (guards-coordination#5). Withhold instead.
+            # confirmed finding must never ship back unchanged text.
+            # Withhold instead.
             logger.error("secret finding with unchanged redacted_text, withholding output")
             detail["redacted_text"] = REDACTION_WITHHELD
             detail["redaction_failed"] = True

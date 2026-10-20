@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# core/report.sh — report a redaction event as SOC2 compliance evidence.
+# core/report.sh — report a redaction event as compliance evidence.
 #
-# Posts to gramatr's secret-leak-to-zammad Kestra flow, which files a
-# Zammad ticket and writes a ClickHouse audit_events row. See
-# soc2-coordination's kestra/flows/secret-leak-to-zammad.yaml and
-# contracts/zammad.yaml for the receiving side.
+# Posts the findings metadata to a Kestra webhook flow (the receiving side
+# is up to whoever runs it; it is typically a ticket plus an audit row).
 #
 # Usage:
 #   SECRET_GUARD_SOURCE=claude-code-live-session \
@@ -38,7 +36,7 @@ if [ -z "${FINDINGS}" ] || [ "${FINDINGS}" = "[]" ]; then
 fi
 
 if [ -z "${KESTRA_PUBLIC_URL:-}" ] || [ -z "${KESTRA_WEBHOOK_KEY_SECRET_LEAK:-}" ]; then
-  echo "secret-guard report.sh: KESTRA_PUBLIC_URL/KESTRA_WEBHOOK_KEY_SECRET_LEAK not set — logging locally only (${LOCAL_LOG}), no Zammad ticket filed" >&2
+  echo "secret-guard report.sh: KESTRA_PUBLIC_URL/KESTRA_WEBHOOK_KEY_SECRET_LEAK not set — logging locally only (${LOCAL_LOG}), nothing posted" >&2
   echo "{\"ts\":\"$(date -Iseconds)\",\"source\":\"${SECRET_GUARD_SOURCE}\",\"findings\":${FINDINGS}}" >> "$LOCAL_LOG"
   exit 0
 fi
@@ -59,7 +57,7 @@ echo "$FINDINGS" | jq -c '.[]' | while read -r finding; do
     -H "Content-Type: application/json" \
     -d "$payload" \
     >/dev/null \
-    || echo "secret-guard report.sh: failed to POST to secret-leak-to-zammad, logging locally (${LOCAL_LOG})" >&2
+    || echo "secret-guard report.sh: failed to POST to the webhook, logging locally (${LOCAL_LOG})" >&2
 done
 
 exit 0

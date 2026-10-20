@@ -7,26 +7,20 @@ name: Publish
 # a release. Tag with `vX.Y.Z` to publish.
 #
 # Fully automated as of 2026-10-19: amd64 builds on GitHub-hosted
-# runners, arm64+GPU builds on dgx-spark-01 (a real self-hosted
-# runner, labels self-hosted/Linux/ARM64/local-gpu/sm87), then both
-# halves are merged into real multi-arch :cpu/:gpu tags. This replaced
-# a manual SSH-to-dgx-spark-01 process that existed because the box
-# used to sit in the org's Default runner group
-# (allows_public_repositories: false), which refuses jobs from public
-# repos (same policy that keeps secret-guard/pii-guard's own CI on
-# GitHub-hosted runners, and for the same reason: a public repo's own
-# CI workflow running on a self-hosted runner is a real attack
-# surface). Argo (n90-co/prod-argocd-v2) created a narrowly-scoped
-# runner group, dgx-arm64-public, containing only dgx-spark-01,
-# allows_public_repositories: true, restricted to exactly this repo +
-# claude-plugin-guards -- see n90-co/prod-argocd-v2#3207. Verified live
-# (2026-10-19) via the GitHub API: dgx-spark-01 is out of Default,
-# kub-ai-01 and the ARC pool are untouched.
+# runners, arm64+GPU builds on a self-hosted runner (labels
+# self-hosted/Linux/ARM64/local-gpu/sm87), then both halves are merged
+# into real multi-arch :cpu/:gpu tags. The arm64 runner sits in a
+# narrowly-scoped org runner group that allows public repos and is
+# restricted to exactly this repo + claude-plugin-guards: the org's
+# default runner group refuses jobs from public repos, and for good
+# reason (a public repo's own CI workflow running on a self-hosted
+# runner is a real attack surface; the same policy keeps secret-guard/
+# pii-guard's own CI on GitHub-hosted runners).
 #
 # GPU cross-building under QEMU is still never attempted (this repo's
 # own Dockerfile header documents that as tried-and-abandoned, too
 # slow, and CUDA correctness can't be verified under emulation) --
-# arm64 now builds NATIVELY on dgx-spark-01, which is what makes this
+# arm64 builds NATIVELY on that runner, which is what makes this
 # safe to automate at all.
 #
 # Auth: the default GITHUB_TOKEN, with `packages: write` below. This
@@ -129,7 +123,7 @@ jobs:
   build-arm64:
     if: github.event_name == 'push'
     needs: verify-tag-matches-version
-    # dgx-arm64-public group membership is what makes this runner
+    # Membership in the org runner group for public repos is what makes this runner
     # reachable from this public repo's own workflow at all -- see the
     # header comment. Native build, no QEMU: this box has the real
     # aarch64 + GPU hardware.

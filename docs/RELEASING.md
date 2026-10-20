@@ -147,8 +147,13 @@ is "the highest". The rules:
 - Plugin-only or service-only changes between releases do not get their own
   number; they ride the next joint release.
 - Because the plugin carries a vendored copy of `app/scan.sh`, every change to
-  `scan.sh` here needs a matching sync in the plugin repo. No CI check compares
-  the two copies.
+  `scan.sh` here needs a matching sync in the plugin repo. The plugin's CI job
+  `scan-sh-drift` (`guards/tests/scan-sh-drift.sh` there) fetches `app/scan.sh`
+  from this repo's `main` (or, on a plugin tag build, the same tag when it
+  exists) and fails if the vendored copy differs by even one character, apart
+  from its two-line header. Merge order for a scanner change: this repo's PR
+  first, then re-run the plugin PR's checks. Run it locally with
+  `SERVER_REF=<branch> bash guards/tests/scan-sh-drift.sh` in the plugin repo.
 
 ## If this repo is ever deleted and recreated
 

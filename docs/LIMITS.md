@@ -48,6 +48,11 @@ shape nor a telling neighbour.
   container is judged by the container's filesystem.
 - A quoted value that contains its own closing quote unescaped is cut short at
   the first one.
+- A malformed `"pw:"value"` (a key word wrapped in quotes with its colon inside
+  them and the value glued on after the closing quote) is not redacted: it is
+  indistinguishable from prose that quotes a key word with a colon, which is
+  deliberately left alone (the text up to the next quote is not a value). Valid
+  forms (`"pw": "value"`, `"pw":"value"`, `pw="value"`) are redacted.
 - A key and value separated by a newline, except the one narrow YAML form:
   the key line must be only the key and a colon, and the next line a single
   bare token. A multi-word or multi-line value, a nested mapping, or an alias
@@ -89,9 +94,7 @@ Known cases: a heading that ends in a keyword and a colon followed by exactly
 one word on the next line (cannot be told from a YAML scalar by pattern); any
 value after a key whose name merely contains a keyword (`secret`, `token`,
 `credential`, ...) unless the key reads as a descriptor such as `secretName`
-or `token_count`; and prose that wraps a key word and its colon in
-quotes, when a second quote follows on the same line (the text between the
-quotes is taken for a quoted value; a quoted value never crosses a line).
+or `token_count`.
 When anything is redacted, ANSI colour codes, zero-width
 characters and fullwidth `=` and `:` are normalised across the whole output
 (see [API.md](API.md#when-redacted_text-is-not-trustworthy)).

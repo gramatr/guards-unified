@@ -10,8 +10,7 @@ Three modes, same checks:
 Invariants asserted for EVERY case, regardless of rule:
   * if the secret axis says "found", the redacted text differs from the
     input and none of the secret material survives in it.
-A "found but unchanged" result is the bug class this exists for
-(guards-coordination#4/#5): a detection with no redaction is worse than a
+A "found but unchanged" result is the bug class this exists for: a detection with no redaction is worse than a
 miss because the verdict claims success.
 
 REQUIRED cases must additionally be found AND redacted. KNOWN_GAPS are
@@ -161,7 +160,7 @@ def main() -> int:
         for fname, text in key_forms(pem).items():
             check(f"{kname}/{fname}", text, material, required=True)
 
-    # Context rules (guards-coordination#1/#9). Every value is fabricated.
+    # Context rules. Every value is fabricated.
     pw = "Tq7vN2xLm9Kd4RzP8wYb"
     punct = "Qm4*Xw9%tL2!pR7=zN3^vB8"
     cases = {
@@ -191,7 +190,7 @@ def main() -> int:
         "yaml/next-line-scalar": [pw], "yaml/quoted-then-more-lines": ["correct horse battery"], "yaml/single-quoted": [pw], "header/bearer": [pw], "header/basic": ["YWRtaW46c2VjcmV0cGFzcw=="],
         "query/access-token": [pw], "aws/secret-access-key": ["wJalrXUtnFEMIK7MDENGbPxRfiCYzzzzzzzzzzzz"],
     }
-    # Batch B (guards-coordination#10) and P2 vendor shapes (#11).
+    # Command-line flags and vendor shapes.
     b = "Xk9mQ4vT2pLw8RzN5bJc7Hd3"
     azure = "abc8Q~" + "Zx3mN7pQ2rT5vW8yB1cD4fG6hJ9kL0nM2o"
     esc = "\033"
@@ -229,7 +228,7 @@ def main() -> int:
         "vendor/gcloud-access-token": ["ya29.a0AfB_byT3kZq8wXr5tNm2PvKd9sL1"],
         "vendor/bcrypt-hash": ["N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"[:20]],
     }
-    # Secrets hiding in base64 under an innocent key name (guards-coordination#11).
+    # Secrets hiding in base64 under an innocent key name.
     import base64
     pem_b64 = base64.b64encode(keys["ec-sec1"].encode()).decode()
     dsn_b64 = base64.b64encode(f"postgresql://svc:{pw}@db.internal:5432/app".encode()).decode()
@@ -244,6 +243,22 @@ def main() -> int:
     materials.update(materials_b)
     for cname, text in cases.items():
         check(cname, text, materials[cname], required=True)
+
+    # A quote-wrapped key word with its colon in prose ("token:") ends its own
+    # quote where a quoted value would open; real quoted values stay redacted
+    # in every style, including next to such prose.
+    qv = "Kq7wXn4tMz2Pb8Lc"
+    quoted_values = {
+        "quoted/equals": (f'password="{qv}"', [qv]),
+        "quoted/json-spaced": (f'{{"password": "{qv}"}}', [qv]),
+        "quoted/json-compact": (f'{{"password":"{qv}"}}', [qv]),
+        "quoted/single-with-spaces": ("password: 'correct horse battery'", ["correct horse battery"]),
+        "quoted/cli-flag": (f'--password="{qv}"', [qv]),
+        "quoted/nested-shell": (f'bash -c "PASSWORD="{qv}" ./run"', [qv]),
+        "quoted/after-wrapped-key-prose": (f'the "token:" field, then {{"password": "{qv}"}}', [qv]),
+    }
+    for cname, (text, material) in quoted_values.items():
+        check(cname, text, material, required=True)
 
     # Harmless lookalikes must come back byte-identical and not be flagged.
     benign = {
@@ -272,6 +287,11 @@ def main() -> int:
         "benign/access-key-id-default": "AccessKey : 48388a15798489a302330828b2388025",
         "benign/begin-prose": "hello -----BEGIN of a story\nline2\n",
     }
+    benign.update({
+        "benign/wrapped-key-prose": 'the "password:" field, then "some text here"',
+        "benign/wrapped-key-prose-single": "a 'token:' label and 'another thing' after it",
+        "benign/wrapped-key-prose-start": '"secret:" and "hello world" follow',
+    })
     for bname, text in benign.items():
         checked += 1
         found, out = scanner.scan(text)
