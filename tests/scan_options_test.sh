@@ -46,6 +46,16 @@ expect_same    "PWD (the working directory) is never treated as a secret" "ls of
 expect_same    "OLDPWD is never treated as a secret"                     "back to $cwd_here done" SECRET_GUARD_ENV_VALUES=1 OLDPWD="$cwd_here"
 expect_same    "a secret-named var whose value is an existing path is skipped" "dir /tmp listed" SECRET_GUARD_ENV_VALUES=1 MY_SERVICE_TOKEN=/tmp
 
+# --- a heading that ends in a keyword and a colon is not a key (found live) ---
+# A line ending in "secret:" followed by an indented line used to redact the
+# first word of that next line, because the delimiter allowed newlines.
+expect_same    "heading ending in secret: then an indented line" $'Rotate the secret:\n  kubectl delete secret old'  # guards:synthetic
+expect_same    "heading ending in token: then a labelled line"   $'About the token:\n  local: running'  # guards:synthetic
+expect_same    "heading ending in password: then prose"          $'Reset the password:\n    follow the steps below'  # guards:synthetic
+# Same-line forms are still redacted.
+expect_changed "same-line key: value still redacts"              'secret: Tq7vN2xLm9Kd4RzP8wYb'  # guards:synthetic
+expect_changed "same-line key=value with blanks still redacts"   $'password =\tTq7vN2xLm9Kd4RzP8wYb'  # guards:synthetic
+
 # --- a value that is an existing path is not a password (found live) ----------
 # `env`/`printenv`/`export -p` print PWD=<working directory>; PWD is also a real
 # password alias, so the key-name rule used to redact the directory.
