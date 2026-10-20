@@ -1,0 +1,6 @@
+# Lint and format settings shared by CI (ruff pinned there) and run-all.sh.
+# tests/redaction_selftest.py is excluded from the formatter on purpose: it is a table of fabricated
+# fixtures, several carrying the synthetic marker on the same line, and reflowing it would move values
+# away from their markers.
+[format]
+exclude = ["tests/redaction_selftest.py"]

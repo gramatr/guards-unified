@@ -24,7 +24,7 @@ _device = None
 
 
 def _resolve_device() -> str:
-    """"auto": use CUDA if torch actually sees a GPU, else CPU — opt-in,
+    """ "auto": use CUDA if torch actually sees a GPU, else CPU — opt-in,
     never required (see config.py). "cpu"/"cuda" force the choice; a
     forced "cuda" with no GPU present fails loudly here rather than
     silently falling back, so a misconfigured deploy is caught at
@@ -39,6 +39,7 @@ def _resolve_device() -> str:
             "INJECTION_GUARD_DEVICE=auto/cpu instead of forcing cuda."
         )
     return config.DEVICE
+
 
 MAX_TOKENS = 512
 CHUNK_OVERLAP = 32  # avoid splitting an injection phrase exactly at a chunk boundary
@@ -63,15 +64,22 @@ def load_model() -> None:
             "INJECTION_GUARD_MODEL_ID=%s overrides the eval-verified default (%s). "
             "No accuracy data exists for this model in this project — see "
             "eval/compare_models.py before trusting it in production.",
-            MODEL_ID, RECOMMENDED_MODEL_ID,
+            MODEL_ID,
+            RECOMMENDED_MODEL_ID,
         )
     _device = _resolve_device()
     logger.info(
         "Loading %s at revision %s on %s (this happens once, not per request)",
-        MODEL_ID, MODEL_REVISION, _device
+        MODEL_ID,
+        MODEL_REVISION,
+        _device,
     )
-    _tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, revision=MODEL_REVISION)  # guards:synthetic (scanner false positive on "tokenizer", fixed in the same change)
-    _model = AutoModelForSequenceClassification.from_pretrained(MODEL_ID, revision=MODEL_REVISION).to(_device)
+    _tokenizer = AutoTokenizer.from_pretrained(
+        MODEL_ID, revision=MODEL_REVISION
+    )  # guards:synthetic (scanner false positive on "tokenizer", fixed in the same change)
+    _model = AutoModelForSequenceClassification.from_pretrained(
+        MODEL_ID, revision=MODEL_REVISION
+    ).to(_device)
     _model.eval()
 
 

@@ -17,6 +17,7 @@ import sys
 import tempfile
 import types
 from pathlib import Path
+from unittest import mock
 
 from fastapi.testclient import TestClient
 
@@ -76,41 +77,94 @@ def verdicts(resp):
 
 print("about")
 r = client.get("/about")
-check("/about reports the model and the pinned revision", r.status_code == 200 and r.json().get("model") == "stub/model" and r.json().get("model_revision") == "stub-revision", r.text[:120])
+check(
+    "/about reports the model and the pinned revision",
+    r.status_code == 200
+    and r.json().get("model") == "stub/model"
+    and r.json().get("model_revision") == "stub-revision",
+    r.text[:120],
+)
 
 print("size limits")
 r = client.post("/v1/scan", json={"text": "x" * 2001})
-check("full route refuses a body over its cap with 413", r.status_code == 413, r.status_code)
-check("413 body names the limit and the setting", r.json()["detail"]["limit_bytes"] == 2000 and r.json()["detail"]["setting"] == "SCAN_FULL_MAX_BYTES")
+check(
+    "full route refuses a body over its cap with 413",
+    r.status_code == 413,
+    r.status_code,
+)
+check(
+    "413 body names the limit and the setting",
+    r.json()["detail"]["limit_bytes"] == 2000
+    and r.json()["detail"]["setting"] == "SCAN_FULL_MAX_BYTES",
+)
 r = client.post("/v1/scan", json={"text": "x" * 2000})
-check("full route accepts a body exactly at its cap", r.status_code == 200, r.status_code)
+check(
+    "full route accepts a body exactly at its cap", r.status_code == 200, r.status_code
+)
 r = client.post("/v1/scan", json={"text": "é" * 1001})  # 2002 bytes, 1001 characters
 check("the cap counts UTF-8 bytes, not characters", r.status_code == 413, r.status_code)
 r = client.post("/v1/scan/secret", json={"text": "x" * 4000})
-check("credential-only route takes more than the full route's cap", r.status_code == 200, r.status_code)
+check(
+    "credential-only route takes more than the full route's cap",
+    r.status_code == 200,
+    r.status_code,
+)
 r = client.post("/v1/scan/secret", json={"text": "x" * 5001})
-check("credential-only route refuses a body over its own cap", r.status_code == 413, r.status_code)
+check(
+    "credential-only route refuses a body over its own cap",
+    r.status_code == 413,
+    r.status_code,
+)
 
 print("a failing PII engine")
 pii_fail["on"] = True
 r = client.post("/v1/scan", json={"text": TEXT})
 check("full route still answers 200", r.status_code == 200, r.status_code)
 if r.status_code == 200:
-    check("the pii finding reports verdict error", verdicts(r)["pii"] == "error", verdicts(r))
-    check("the other two axes still report", verdicts(r)["secret"] == "clean" and verdicts(r)["injection"] == "clean", verdicts(r))
-    check("redacted_text falls back to the credential-redacted text", r.json()["redacted_text"] == TEXT)
+    check(
+        "the pii finding reports verdict error",
+        verdicts(r)["pii"] == "error",
+        verdicts(r),
+    )
+    check(
+        "the other two axes still report",
+        verdicts(r)["secret"] == "clean" and verdicts(r)["injection"] == "clean",
+        verdicts(r),
+    )
+    check(
+        "redacted_text falls back to the credential-redacted text",
+        r.json()["redacted_text"] == TEXT,
+    )
 r = client.post("/v1/scan/secret", json={"text": TEXT})
 check("credential-only route is unaffected", r.status_code == 200, r.status_code)
 pii_fail["on"] = False
 
 print("a failing credential scan")
-real_scan = main._scan_secrets
-main._scan_secrets = lambda t: {"type": "secret", "verdict": "error", "reason_code": ["SECRET_SCAN_TIMEOUT"], "detail": {"error": "timeout"}}
-r = client.post("/v1/scan", json={"text": TEXT})
-check("full route answers 200 with verdict error", r.status_code == 200 and verdicts(r)["secret"] == "error", r.status_code)
-if r.status_code == 200:
-    check("PII is still redacted in redacted_text", r.json()["redacted_text"] == "owner: <PERSON>\n", r.json()["redacted_text"])
-main._scan_secrets = real_scan
+
+
+def _timed_out_scan(_text):
+    return {
+        "type": "secret",
+        "verdict": "error",
+        "reason_code": ["SECRET_SCAN_TIMEOUT"],
+        "detail": {"error": "timeout"},
+    }
+
+
+with mock.patch.object(main, "_scan_secrets", _timed_out_scan):
+    r = client.post("/v1/scan", json={"text": TEXT})
+    check(
+        "full route answers 200 with verdict error",
+        r.status_code == 200 and verdicts(r)["secret"] == "error",
+        r.status_code,
+    )
+    if r.status_code == 200:
+        check(
+            "PII is still redacted in redacted_text",
+            r.json()["redacted_text"] == "owner: <PERSON>\n",
+            r.json()["redacted_text"],
+        )
+
 
 print("FAIL" if failures else "ok", f"- {len(failures)} failure(s)")
 sys.exit(1 if failures else 0)

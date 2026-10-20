@@ -29,7 +29,11 @@ def kinds(text, which=v.KINDS):
 
 def hit(name, text, kind, expect=None):
     got = kinds(text, [kind])
-    check(name, bool(got) and (expect is None or got[0][1] == expect), f"{text!r} -> {got}")
+    check(
+        name,
+        bool(got) and (expect is None or got[0][1] == expect),
+        f"{text!r} -> {got}",
+    )
 
 
 def miss(name, text, kind=None):
@@ -38,7 +42,10 @@ def miss(name, text, kind=None):
 
 
 def luhn_complete(prefix, length):
-    body = prefix + "".join(str(random.Random(prefix).randint(0, 9)) for _ in range(length - 1 - len(prefix)))
+    body = prefix + "".join(
+        str(random.Random(prefix).randint(0, 9))
+        for _ in range(length - 1 - len(prefix))
+    )
     for c in range(10):
         if v.luhn_ok(body + str(c)):
             return body + str(c)
@@ -84,15 +91,31 @@ gb_spaced = " ".join(gb[i : i + 4] for i in range(0, len(gb), 4))
 hit("iban compact", f"iban {gb} on file", "IBAN_CODE", gb)
 hit("iban grouped", f"IBAN {gb_spaced} on file", "IBAN_CODE", gb_spaced)
 hit("iban german", f"to {de}", "IBAN_CODE", de)
-hit("iban followed by an upper-case word", f"IBAN {gb_spaced} DECLINED", "IBAN_CODE", gb_spaced)
+hit(
+    "iban followed by an upper-case word",
+    f"IBAN {gb_spaced} DECLINED",
+    "IBAN_CODE",
+    gb_spaced,
+)
 bad_check = gb[:2] + ("00" if gb[2:4] != "00" else "01") + gb[4:]
 miss("iban with wrong check digits", f"iban {bad_check}", "IBAN_CODE")
-b32 = "AB12" + "".join(random.Random(7).choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567") for _ in range(18))
+b32 = "AB12" + "".join(
+    random.Random(7).choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567") for _ in range(18)
+)
 miss("22-char base32-looking id (unknown country)", f"id {b32}", "IBAN_CODE")
-b32_gb = "GB" + "12" + "ZXCV" + "".join(random.Random(8).choice("234567ABCDEFG") for _ in range(14))
+b32_gb = (
+    "GB"
+    + "12"
+    + "ZXCV"
+    + "".join(random.Random(8).choice("234567ABCDEFG") for _ in range(14))
+)
 if v.iban_ok(b32_gb):
     b32_gb = b32_gb[:-1] + ("A" if b32_gb[-1] != "A" else "B")
-miss("22-char base32-looking id with a valid country and length, failing mod 97", f"id {b32_gb}", "IBAN_CODE")
+miss(
+    "22-char base32-looking id with a valid country and length, failing mod 97",
+    f"id {b32_gb}",
+    "IBAN_CODE",
+)
 miss("iban with the wrong length for its country", f"iban {gb[:-1]}", "IBAN_CODE")
 miss("sha1 hex", "commit 3f786850e387550fdab836ed7e6dc881de23001b", "IBAN_CODE")
 miss("UUID", "4F2A9C1E-7B3D-4E58-9A61-0C8D2B5E7F13", "IBAN_CODE")
@@ -102,7 +125,9 @@ miss("lower-case id", "gb82west12345698765432", "IBAN_CODE")
 ssn = "078-05-1120"  # guards:synthetic
 ssn_bare = ssn.replace("-", "")
 hit("ssn", f"ssn {ssn}", "US_SSN", ssn)
-hit("ssn 9xx area is kept (ITIN / fabricated)", "tin 912-70-1234", "US_SSN")  # guards:synthetic
+hit(
+    "ssn 9xx area is kept (ITIN / fabricated)", "tin 912-70-1234", "US_SSN"
+)  # guards:synthetic
 for label, parts in (
     ("area 000", ["000", "12", "3456"]),
     ("area 666", ["666", "12", "3456"]),
@@ -115,7 +140,11 @@ miss("phone-shaped 3-3-4", "415-555-0132", "US_SSN")
 miss("ssn glued to a longer id", "x" + ssn, "US_SSN")
 miss("ssn inside a longer dashed id", ssn + "-77", "US_SSN")
 hit("bare 9 digits after the word ssn", "ssn: " + ssn_bare, "US_SSN", ssn_bare)
-hit("bare 9 digits after social security number", "Social Security Number " + ssn_bare, "US_SSN")
+hit(
+    "bare 9 digits after social security number",
+    "Social Security Number " + ssn_bare,
+    "US_SSN",
+)
 miss("bare 9 digits, no context", "pid " + ssn_bare, "US_SSN")
 
 # ------------------------------------------------------------------- passport
@@ -179,11 +208,23 @@ for name, t in (
 # ---------------------------------------------------------------------- email
 for name, t, exp in (
     ("plain", "mail ada.lovelace@example.com now", "ada.lovelace@example.com"),
-    (".invalid tld", "Author: <pat_doe@sample.example.invalid>", "pat_doe@sample.example.invalid"),
+    (
+        ".invalid tld",
+        "Author: <pat_doe@sample.example.invalid>",
+        "pat_doe@sample.example.invalid",
+    ),
     ("example.org", "to a@example.org", "a@example.org"),
     ("plus tag", "to a+tag@mail.example.net.", "a+tag@mail.example.net"),
-    ("role mailbox is kept", "contact: security@example.invalid", "security@example.invalid"),
-    ("github noreply with a handle is kept", "12345+alice@users.noreply.github.com", "12345+alice@users.noreply.github.com"),
+    (
+        "role mailbox is kept",
+        "contact: security@example.invalid",
+        "security@example.invalid",
+    ),
+    (
+        "github noreply with a handle is kept",
+        "12345+alice@users.noreply.github.com",
+        "12345+alice@users.noreply.github.com",
+    ),
 ):
     hit(f"email {name}", t, "EMAIL_ADDRESS", exp)
 for name, t in (
@@ -202,9 +243,20 @@ for name, t in (
 
 # ----------------------------------------------------------- shape and safety
 spans = v.find_pii(f"{gb} and {visa} at 10.0.0.1 or a@example.org")
-check("find_pii sorted by start", [s.start for s in spans] == sorted(s.start for s in spans), str(spans))
-check("spans are Span tuples with offsets and a score, no text", all(len(s) == 4 and 0 < s.score <= 1 for s in spans))
-check("kinds filter", {s.entity_type for s in v.find_pii(f"{visa} a@example.org", ["EMAIL_ADDRESS"])} == {"EMAIL_ADDRESS"})
+check(
+    "find_pii sorted by start",
+    [s.start for s in spans] == sorted(s.start for s in spans),
+    str(spans),
+)
+check(
+    "spans are Span tuples with offsets and a score, no text",
+    all(len(s) == 4 and 0 < s.score <= 1 for s in spans),
+)
+check(
+    "kinds filter",
+    {s.entity_type for s in v.find_pii(f"{visa} a@example.org", ["EMAIL_ADDRESS"])}
+    == {"EMAIL_ADDRESS"},
+)
 check("unknown kind ignored", v.find_pii("a@example.org", ["NOPE"]) == [])
 big = ("1" * 40 + " 12 34 " + "9" * 30 + "\n") * 800
 
@@ -212,5 +264,7 @@ t0 = time.perf_counter()
 v.find_pii(big)
 check("no pathological backtracking on 64 KB of digits", time.perf_counter() - t0 < 2.0)
 
-print(f"\n{'FAILED: ' + str(len(failures)) if failures else 'all validator tests passed'}")
+print(
+    f"\n{'FAILED: ' + str(len(failures)) if failures else 'all validator tests passed'}"
+)
 sys.exit(1 if failures else 0)

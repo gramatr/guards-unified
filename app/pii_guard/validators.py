@@ -168,7 +168,10 @@ _PASSPORT = re.compile(
 
 
 def passports(text: str) -> list[Span]:
-    return [Span("US_PASSPORT", m.start(1), m.end(1), 0.85) for m in _PASSPORT.finditer(text)]
+    return [
+        Span("US_PASSPORT", m.start(1), m.end(1), 0.85)
+        for m in _PASSPORT.finditer(text)
+    ]
 
 
 # ---------------------------------------------------------------------- phone
@@ -181,7 +184,9 @@ _NANP = re.compile(
     r"(?:\(([2-9]\d\d)\)[ .-]?|([2-9]\d\d)[ .-])([2-9]\d\d)[ .-](\d{4})(?![\w-]|\.\d)"
 )
 # International with separators: +CC then 2-4 groups of 2-6 digits.
-_INTL = re.compile(r"(?<![\w.+-])\+(?!1[ .-]?\d)([1-9]\d{0,2})(?:[ .-]\d{2,6}){2,4}(?![\w-]|\.\d)")
+_INTL = re.compile(
+    r"(?<![\w.+-])\+(?!1[ .-]?\d)([1-9]\d{0,2})(?:[ .-]\d{2,6}){2,4}(?![\w-]|\.\d)"
+)
 # Compact E.164 (+14155550132). Not at the start of a line, where "+" is a diff
 # marker and the digits an epoch or an id.
 _E164 = re.compile(r"(?<=[^\n\w.+-])\+([1-9]\d{7,14})(?![\w-]|\.\d)")
@@ -221,7 +226,11 @@ def ips(text: str) -> list[Span]:
             a = ipaddress.IPv4Address(m.group(0))
         except ValueError:  # octet over 255, leading zero
             continue
-        if a.is_loopback or a.is_unspecified or a == ipaddress.IPv4Address("255.255.255.255"):
+        if (
+            a.is_loopback
+            or a.is_unspecified
+            or a == ipaddress.IPv4Address("255.255.255.255")
+        ):
             continue
         if _is_netmask(a):
             continue
