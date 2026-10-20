@@ -41,6 +41,7 @@ What was hardened, what was loosened and why is in
 - Added: self-test cases both ways (reference keys must pass unchanged, last-segment keys must redact).
 - Fixed: the code-shape rule is stricter, after the plugin's CI (which runs without gitleaks) showed a password inside a JSON string no longer being redacted. A key inside a quoted string (JSON string content, a shell string, a log message in quotes) is text, not code. Braces and commas alone no longer count as "the line is code": a line needs a semicolon, `=>` or `) {`, or the key must sit in property position (first on its line, or after `{`, `(`, `[` or `,`). Log lines, sentences and issue bodies that contain a key, a colon and an identifier-looking word still redact. A type name or camelCase variable needs humps with at least two lowercase letters (no digits for a variable), so random mixed-case values are never read as code.
 - Fixed: a long unbroken run of name characters (a base64 blob, a hash, a bundle without spaces) no longer makes the context pass quadratic. Runs of 256 or more are masked for the context rules and restored afterwards; a secret after one, or a long run as the value of a key, is still redacted. A 20 KB run scanned in 9.7 s before and in 0.06 s after, which is what made the publish guard deny commits with "did not finish in time". Ordinary text is unaffected (27 KB of minified JSON: 70 ms before, 96 ms after).
+- Changed: CI pins ruff 0.17.1 and checks formatting as well as lint, and the server code is formatted (no behavior change; `tests/redaction_selftest.py` is excluded from the formatter). `app/report.sh` takes its webhook flow path from `REPORT_WEBHOOK_PATH`, default unchanged.
 
 ### claude-plugin-guards
 
@@ -49,6 +50,8 @@ What was hardened, what was loosened and why is in
 - Added: the MCP server carries `instructions`, four `guards://guide/...` resources and a `check_before_publish` tool that runs the publish guard offline.
 - Changed (user-visible): a line marked `guards:synthetic` is still denied in a commit if it matches a sure-thing vendor shape: a private-key header, an AWS access key id, a GitHub token, a Slack token or a live Stripe or OpenAI-style key. Documented example ids and values containing EXAMPLE or FAKE, JWT-shaped strings and ordinary fixtures are still accepted by the marker. Build vendor-shaped fakes at run time.
 - Added: MCP tools `explain_block`, `prepare_publication`, `guards_status`, `mark_synthetic` (refuses vendor-shaped tokens and private-key headers) and `report_false_positive`; MCP prompts `fix_a_block`, `safe_pr_body` and `fake_fixture_checklist`; a `guards-for-agents` skill; and `docs/AGENTS-GUIDE.md` with a snippet for a project's CLAUDE.md or AGENTS.md. No tool disables or weakens a guard, and no tool returns a matched value.
+- Fixed: the hooks no longer turn the guards off silently when `jq` is missing. The publish guard, the output hooks and the SendMessage hook read the payload without `jq` or fail visibly with a reason that says to install it, and `check_before_publish` answers `unknown` instead of allow when it could not inspect.
+- Changed: ruff (check and format) now runs on the plugin's Python in CI; `guards/vendor` is excluded.
 
 ## [0.2.8] - 2026-10-20
 
