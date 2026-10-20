@@ -3,9 +3,9 @@
 #
 #   SECRET_GUARD_REDACT_KEY_IDS=1  also redact access-key / client IDs.
 #       Default OFF: an ID is a semi-public identifier, the secret half is
-#       the enforced boundary (guards-coordination#3).
+#       the enforced boundary.
 #   SECRET_GUARD_ENV_VALUES=1      exact-match redact values of environment
-#       variables whose NAMES look secret (guards-coordination#11).
+#       variables whose NAMES look secret.
 #       Default OFF: only meaningful where the scanner shares the session's
 #       environment.
 #
@@ -23,6 +23,14 @@ expect_changed() { # expect_changed DESC INPUT [ENV...]
 expect_same() {
   if [ "$(scan "$2" "${@:3}")" = "$2" ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: $1 (wanted unchanged)"; fi
 }
+
+# Quote-wrapped key word with its colon: the key's closing quote is not the
+# opening quote of a value (real quoted values are pinned in redaction_selftest.py).
+expect_same    "wrapped key word in prose is not a value"   'the "password:" field, then "some text here"'
+# Accepted limitation (docs/TRADEOFFS.md): the same shape with a value glued on
+# is indistinguishable from the prose above, so it is NOT redacted.
+expect_same    "accepted: wrapped key + glued value"        'x "pw:"abcdefgh"'
+expect_changed "nested shell quoting still redacted"        'bash -c "PASSWORD="abcdefgh" ./run"'
 
 ID='AccessKey : 48388a15798489a302330828b2388025'
 expect_same    "key ID untouched by default"        "$ID"

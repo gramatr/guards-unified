@@ -32,6 +32,26 @@ What was hardened, what was loosened and why is in
 
 ---
 
+## [Unreleased]
+
+### guards-unified
+
+- Fixed: prose that wraps a key word and its colon in quotes (`the "password:"
+  field, then "some text"`) no longer redacts the text up to the next quote on
+  the same line; this closes the known residual noted under 0.2.4. Real quoted
+  values are unchanged: `password="x"`, `"password": "x"`, `"password":"x"`,
+  `password: 'x y'`, `--password="x"` and nested shell quoting
+  (`bash -c "PASSWORD="x" ./run"`) are still redacted.
+- Known limit: a malformed `"pw:"value"` (the key's closing quote after the
+  colon, the value glued on) reads as that prose and is not redacted; see
+  [docs/TRADEOFFS.md](docs/TRADEOFFS.md).
+- Self-test: 108 cases (seven required, three harmless-lookalike added).
+
+### claude-plugin-guards
+
+- Synced the vendored `scan.sh` with the fix above. The plugin's CI now fails
+  when the vendored copy differs from the server's.
+
 ## [0.2.4] - 2026-10-19
 
 ### guards-unified

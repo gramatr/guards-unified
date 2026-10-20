@@ -80,8 +80,7 @@ COPY THIRD_PARTY_LICENSES/ /app/licenses/THIRD_PARTY_LICENSES/
 # sudo for the metrics file. Fixed UID/GID (1000) rather than useradd's
 # default-assigned one, so it's predictable across rebuilds and so a
 # bind-mounted host directory can be pre-created to match it (see
-# guards-selfheal.sh's own pre-flight step, and platform-guards'
-# README for the manual equivalent).
+# guards-selfheal.sh's own pre-flight step for the manual equivalent).
 RUN groupadd -g 1000 guards && useradd -u 1000 -g guards -d /app -s /usr/sbin/nologin guards \
     && mkdir -p /app/.cache/huggingface /app/metrics \
     && chown -R guards:guards /app

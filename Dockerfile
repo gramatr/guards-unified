@@ -24,9 +24,9 @@
 #
 # Verified for real on BOTH architectures, not just "it builds": built
 # and ran this exact image on an x86_64 host with an NVIDIA RTX 4090
-# attached, and separately, natively (not emulated), on dgx-spark-01
-# (aarch64, NVIDIA GB10 / Grace-Blackwell). On both, the startup log
-# line from injection_guard.model's own device resolution reads
+# attached, and separately, natively (not emulated), on an aarch64
+# self-hosted runner (NVIDIA GB10 / Grace-Blackwell). On both, the
+# startup log line from injection_guard.model's own device resolution reads
 # "Loading ... on cuda" (not "cpu"), and a real /v1/scan call returns
 # correct results. The standard PyPI torch wheel's CUDA support DOES
 # work on GB10 natively — that was an open question before this was

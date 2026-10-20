@@ -8,9 +8,9 @@ name: Pipeline check
 #      settings, lost if the repo is recreated). Tested by pushing a
 #      tiny empty image to a scratch tag with GITHUB_TOKEN (the tag is left
 #      behind on purpose, see the note in the registry-push job).
-#   2. This repo is in the org's dgx-arm64-public runner group, so the
-#      arm64/GPU build can reach dgx-spark-01. Tested by running a
-#      trivial job on that runner.
+#   2. This repo is in the org runner group that allows public repos to
+#      use the self-hosted arm64/GPU runner, so the arm64/GPU build can
+#      reach it. Tested by running a trivial job on that runner.
 #
 # Never touches :cpu, :gpu, or any vX.Y.Z tag. workflow_dispatch only
 # (no pull_request trigger), so nobody without write access can run

@@ -67,7 +67,7 @@ jobs:
   redaction-selftest:
     # Runs against the image we would actually ship, not a dev checkout:
     # every secret finding must come back redacted, never "found" with
-    # the text unchanged (guards-coordination#5). Synthetic keys are
+    # the text unchanged. Synthetic keys are
     # generated at run time; nothing real is involved.
     runs-on: ubuntu-latest
     steps:
