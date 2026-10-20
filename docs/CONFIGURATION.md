@@ -99,7 +99,7 @@ Hard-coded; none is configurable.
 | Context rules | no cap on matches | Linear time; 300 distinct secret lines are all redacted (tested). Thousands of matches are still slow (about 22 s for 500 KB with 2,000 secrets in one measurement by the maintainers; not re-measured). |
 | Injection window | 512 tokens, 32-token overlap (480-token step) | Longer text is split into windows; every window is classified, and any malicious window flags the whole input. There is no cap on the number of windows, so cost grows with input size. Each window is also truncated to 512 tokens. |
 | PII text length | no limit set by this app | Not verified: the underlying NLP library has its own maximum text length, and an input beyond it may make the PII axis return verdict `error`. |
-| `/v1/scan/secret` latency | about 30 ms in the container | Stated in the code, not measured by this document. Grows with input size and with the number of rules that match. |
+| `/v1/scan/secret` latency | tens of milliseconds | The code's docstring says about 30 ms; the maintainers measured 55 to 60 ms per call in the production image. Neither was re-measured here. Grows with input size and with the number of rules that match. |
 | `/v1/scan` latency | about 0.25 s per KB | Dominated by the PII and injection models on CPU. A GPU speeds up the injection model only. |
 
 CPU is the constraint for the two models. Without a GPU, give the container

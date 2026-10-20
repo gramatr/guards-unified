@@ -50,7 +50,7 @@ Four routes. The full contract is in [docs/API.md](docs/API.md).
 | Route | What it does |
 |---|---|
 | `POST /v1/scan` | All three axes. Body `{"text": "..."}`. Returns `findings` (always `[secret, pii, injection]`) and `redacted_text` (secrets, then PII; injection never alters text). |
-| `POST /v1/scan/secret` | The secret axis alone, same finding shape. About 30 ms in the container, because it does not run the PII and injection models. Use it wherever secrets are what matter (tool output, commits, anything about to be published). |
+| `POST /v1/scan/secret` | The secret axis alone, same finding shape. Tens of milliseconds (the code says about 30 ms; the release measurement was 55 to 60 ms through the service), because it does not run the PII and injection models. Use it wherever secrets are what matter (tool output, commits, anything about to be published). |
 | `GET /health` | Liveness. Always `{"status": "ok"}`; it does not check the models. |
 | `GET /about` | `service`, `version` (the `VERSION` file baked into the image), `model`, and the Llama licence attribution. Use it to confirm which release a running container is. |
 
