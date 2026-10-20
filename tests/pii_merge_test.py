@@ -115,6 +115,21 @@ noise = "run 39442632382 ts 1760972400123 offset=4155550132 id 912345678"
 r, _ = run(noise, {"4155550132": ("PHONE_NUMBER", 0.5), "912345678": ("US_PASSPORT", 0.5)})
 check("engineering noise not flagged", not r["found"] and r["redacted_text"] == noise, str(r))
 
+# the output filters are wired in: a tool name read as PERSON and a key=value
+# read as LOCATION are dropped, a real name and a street address are kept
+tool = "Jenkins build 20 finished; max_position_embeddings=131072; Alice Example lives at 12 Maple Avenue"
+r, _ = run(
+    tool,
+    {
+        "Jenkins": ("PERSON", 0.85),
+        "max_position_embeddings=131072": ("LOCATION", 0.85),
+        "Alice Example": ("PERSON", 0.85),
+        "12 Maple Avenue": ("LOCATION", 0.85),
+    },
+)
+got = [(t, tool[a:b]) for t, a, b in spans_of(r)]
+check("filters drop a tool name and a key=value", got == [("PERSON", "Alice Example"), ("LOCATION", "12 Maple Avenue")], str(r))
+
 # PII_ENTITIES narrowing: only the requested validator kinds run
 saved = engine.ENTITIES
 engine.ENTITIES = ["EMAIL_ADDRESS"]

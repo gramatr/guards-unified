@@ -136,6 +136,28 @@ characters and fullwidth `=` and `:` are normalised across the whole output
     All of what remains is Presidio reading an engineering word (Jenkins, Darwin,
     Phoenix) as a person or a hex id as a place. Address recall (Presidio
     `LOCATION`) is 0.69.
+  - Output filters on those two kinds (`app/pii_guard/filters.py`, since the
+    release after v0.2.7). A `LOCATION` span is dropped if it contains `=` or `_`,
+    a run of four or more digits (a house number before a street name and a ZIP
+    after a state code do not count), a run of twelve or more hex characters, no
+    letter at all, or is a single lowercase word. A `PERSON` span is dropped if it
+    is a single lowercase word, or if every word of it is a name in the built-in
+    list of about 300 software, tool and product names
+    (`app/pii_guard/ignore_names.py`, plus `PII_IGNORE_NAMES`) or a generic
+    product word such as "Lab" or "Server", with at least one real tool name; a
+    title right before the span (`Dr. Jenkins`) keeps it. On the bake-off corpus
+    this took ordinary lines flagged from 43 to 11 in 1000 with no change in
+    recall; on a second set written afterwards with different tool names and
+    identifier shapes it took them from 64 to 32 in 1000, again with no change
+    in recall. Address recall is unchanged at 0.64 to 0.69.
+  - Still gets through: a tool or product name that is not in the list
+    (Gerrit, Keda, Airbyte Server), project code names that are also place or
+    given names (Phoenix, Darwin, Apollo), a surname-like word in a config
+    (`Chandler`, `Washington`, `Lincoln-163`), a `PERSON` span that starts with a
+    bracket, and a base64-looking string with no digit. Not flagged: a person
+    whose whole name is a listed word, mentioned alone and without a title
+    (see [TRADEOFFS.md](TRADEOFFS.md)). Whether `Chandler` is a surname or a
+    place is not decidable from the word; it is not attempted.
   `US_DRIVER_LICENSE` and `US_BANK_NUMBER` are off by
   default (see [CONFIGURATION.md](CONFIGURATION.md): `PII_ENTITIES`) because their
   recognizers are pattern-only and matched run ids, timestamps and PR numbers. A
