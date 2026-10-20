@@ -86,6 +86,14 @@ expect_changed "a path-looking value that does not exist still redacts" "DB_PASS
 # --- SECRET_GUARD_SKIP_GITLEAKS=1: deterministic passes only -------------
 DSN='postgresql://svc:Tq7vN2xLm9Kd4RzP8wYb@db.internal:5432/app'
 expect_changed "skip-gitleaks still redacts a DSN password" "$DSN" SECRET_GUARD_SKIP_GITLEAKS=1
+# The code-shape rule must not read a value inside a string as code: a JSON body, a
+# quoted command, and mixed-case random values on a line with braces stay secrets
+# (context pass only, so the check does not depend on gitleaks).
+JV='Zq8wXr5tNm2PvKd9Lb4s'  # guards:synthetic
+expect_changed "skip-gitleaks: value inside a JSON string" "{\"body\":\"password: $JV\",\"n\":1}" SECRET_GUARD_SKIP_GITLEAKS=1  # guards:synthetic
+expect_changed "skip-gitleaks: letters-only mixed-case value, braces" "{ token: KdZqMwLpXrVtNbHgFs }" SECRET_GUARD_SKIP_GITLEAKS=1  # guards:synthetic
+expect_changed "skip-gitleaks: camel-looking value with a digit" "const x = { secret: kdZqMwLp4Xr };" SECRET_GUARD_SKIP_GITLEAKS=1  # guards:synthetic
+expect_same    "skip-gitleaks: property holding a variable is code" "  accessToken: accessToken," SECRET_GUARD_SKIP_GITLEAKS=1  # guards:synthetic
 expect_changed "skip-gitleaks + env values still redacts"   "x $V y" SECRET_GUARD_SKIP_GITLEAKS=1 SECRET_GUARD_ENV_VALUES=1 DB_PASSWORD="$V"
 if command -v gitleaks >/dev/null 2>&1; then
   TOK='ghp_a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8'
