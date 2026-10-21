@@ -75,6 +75,23 @@ jobs:
         run: |
           /bin/bash --version | head -1
           SCAN_BASH=/bin/bash /bin/bash tests/scan_bash_compat_test.sh
+      - name: PROBE (temporary) where does the time go on macOS bash 3.2
+        timeout-minutes: 8
+        run: |
+          set +e
+          for n in 1000 2000 4000 8000; do
+            echo "=== run length $n"
+            run="$(head -c "$n" /dev/zero | tr '\0' a)"
+            echo "-- grep -oE {256,}"
+            ( TIMEFORMAT='%R s'; time (printf '%s' "$run" | grep -oE '[A-Za-z0-9_.-]{256,}' > /dev/null) ) 2>&1
+            echo "-- awk field split"
+            ( TIMEFORMAT='%R s'; time (printf '%s' "$run" | awk -F'[^A-Za-z0-9_.-]+' '{for(i=1;i<=NF;i++) if (length($i)>=256) print $i}' > /dev/null) ) 2>&1
+            echo "-- bash substitution of the run by a placeholder"
+            text="$run password: hunter2x"
+            ( TIMEFORMAT='%R s'; time (x="${text//"$run"/"~~R0~~"}") ) 2>&1
+            echo "-- scan.sh whole (gitleaks skipped), 60 s cap"
+            ( TIMEFORMAT='%R s'; time (printf '%s' "$text" | SECRET_GUARD_SKIP_GITLEAKS=1 /usr/bin/perl -e 'alarm 60; exec @ARGV' /bin/bash app/scan.sh > /dev/null) ) 2>&1
+          done
 
   cve-scan-source:
     runs-on: ubuntu-latest
