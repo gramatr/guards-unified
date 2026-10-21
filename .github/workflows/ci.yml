@@ -65,6 +65,8 @@ jobs:
       - name: LICENSE is the plain MIT text
         # Text after the license makes GitHub report 'Other'; notes belong in NOTICE.
         run: bash tests/license_test.sh
+      - name: Release plan and tag lists (a rehearsal can never write a bare tag)
+        run: bash tests/release_plan_test.sh
 
   scan-macos:
     # macOS ships bash 3.2. v0.2.9 used a bash 4 expansion in scan.sh, so on a Mac

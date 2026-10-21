@@ -39,17 +39,48 @@ on:
       - "v*"
   workflow_dispatch:
     inputs:
+      rehearsal:
+        description: "Rehearse the whole release on a scratch tag (rehearsal-<run number>), from any branch. Writes only scratch-tagged images and a DRAFT release; never the bare :cpu/:gpu tags, a per-architecture latest tag or a per-commit tag. Ignores `version`."
+        type: boolean
+        default: false
       version:
-        description: "Manual recovery only: version tag (vX.Y.Z) to re-run merge-multiarch for, if a normal tag-push run built both halves but the merge step itself needs re-running."
-        required: true
+        description: "Manual recovery only (rehearsal off): version tag (vX.Y.Z) to re-run merge-multiarch for, if a normal tag-push run built both halves but the merge step itself needs re-running."
+        required: false
 
 permissions:
   contents: read
   packages: write
 
 jobs:
+  plan:
+    # Decides what this run is: a real release (a tag push), a rehearsal (a manual run on a scratch
+    # tag) or a recovery (a manual re-run of merge-multiarch for a real tag). Every image name below
+    # takes its tag from here, and the tag lists come from tests/release_tags.sh, so a rehearsal
+    # cannot write a bare :cpu/:gpu tag (tests/release_plan_test.sh pins that).
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.plan.outputs.mode }}
+      tag: ${{ steps.plan.outputs.tag }}
+      ver: ${{ steps.plan.outputs.ver }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Decide mode, tag and version
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          REHEARSAL: ${{ inputs.rehearsal }}
+          VERSION_INPUT: ${{ inputs.version }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          out="$(bash tests/release_plan.sh "$EVENT" "$REF_NAME" "$REHEARSAL" "$VERSION_INPUT" "$RUN_NUMBER" "$(tr -d '[:space:]' < VERSION)")"
+          echo "$out" >> "$GITHUB_OUTPUT"
+          echo "$out"
+
   verify-tag-matches-version:
-    if: github.event_name == 'push'
+    needs: plan
+    if: needs.plan.outputs.mode != 'recovery'
     # "Clean release" means the tag we're about to publish from is the
     # same version the VERSION-bump PR actually merged -- not whatever
     # commit happened to be on main when someone ran `git tag`. Fails
@@ -58,8 +89,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Tag vs VERSION file
+        # A rehearsal has no version tag, so it checks the changelog for the VERSION file instead.
+        if: needs.plan.outputs.mode == 'release'
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
         run: |
-          tag="${GITHUB_REF_NAME#v}"
+          tag="${TAG#v}"
           file="$(cat VERSION)"
           if [ "$tag" != "$file" ]; then
             echo "::error::Tag v$tag does not match VERSION file ($file) on this commit. Bump VERSION in a PR, merge it, THEN tag that merge commit."
@@ -69,8 +104,10 @@ jobs:
         # The release page (job `release`) takes its notes from CHANGELOG.md. Checking it
         # here means a missing entry stops the run before any image is published,
         # not after.
+        env:
+          VER: ${{ needs.plan.outputs.ver }}
         run: |
-          ver="${GITHUB_REF_NAME#v}"
+          ver="$VER"
           if ! grep -q "^## \[$ver\]" CHANGELOG.md; then
             echo "::error::CHANGELOG.md has no '## [$ver]' section. Add it in a PR, merge it, THEN tag that merge commit."
             exit 1
@@ -87,8 +124,8 @@ jobs:
     # docs/gitleaks-assets.sha256 or this job fails. Changing the gitleaks recipe means
     # updating that file (and the copy in claude-plugin-guards) in the same change.
     # Nothing here publishes; the `release` job attaches the result to the release.
-    if: github.event_name == 'push'
-    needs: verify-tag-matches-version
+    if: needs.plan.outputs.mode != 'recovery'
+    needs: [plan, verify-tag-matches-version]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -117,8 +154,8 @@ jobs:
           if-no-files-found: error
 
   build-amd64:
-    if: github.event_name == 'push'
-    needs: verify-tag-matches-version
+    if: needs.plan.outputs.mode != 'recovery'
+    needs: [plan, verify-tag-matches-version]
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -143,6 +180,16 @@ jobs:
             echo "dockerfile=Dockerfile" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Plan the tags
+        id: tags
+        env:
+          MODE: ${{ needs.plan.outputs.mode }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          list="$(bash tests/release_tags.sh build "$MODE" "$VARIANT" amd64 "$TAG" "${{ github.sha }}" | sed 's|^|ghcr.io/gramatr/guards-unified:|')"
+          { echo 'list<<EOF_TAGS'; echo "$list"; echo 'EOF_TAGS'; } >> "$GITHUB_OUTPUT"
+
       - name: Build and push (amd64)
         # -amd64 suffix, not the bare :cpu/:gpu -- publishing straight
         # to the bare tag here is the exact bug found 2026-10-19: it
@@ -156,23 +203,20 @@ jobs:
           file: ${{ steps.file.outputs.dockerfile }}
           platforms: linux/amd64
           push: true
-          tags: |
-            ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-amd64
-            ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-amd64-${{ github.ref_name }}
-            ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-sha-${{ github.sha }}
+          tags: ${{ steps.tags.outputs.list }}
 
       - name: Trivy scan the just-published image before anyone pulls it
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
-          image-ref: ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-amd64-${{ github.ref_name }}
+          image-ref: ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-amd64-${{ needs.plan.outputs.tag }}
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
 
   build-arm64:
-    if: github.event_name == 'push'
-    needs: verify-tag-matches-version
+    if: needs.plan.outputs.mode != 'recovery'
+    needs: [plan, verify-tag-matches-version]
     # Membership in the org runner group for public repos is what makes this runner
     # reachable from this public repo's own workflow at all -- see the
     # header comment. Native build, no QEMU: this box has the real
@@ -200,21 +244,24 @@ jobs:
           fi
 
       - name: Build and push (native arm64)
+        env:
+          MODE: ${{ needs.plan.outputs.mode }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          VARIANT: ${{ matrix.variant }}
+          DOCKERFILE: ${{ steps.file.outputs.dockerfile }}
         run: |
-          docker build -f ${{ steps.file.outputs.dockerfile }} \
-            -t ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-arm64 \
-            -t ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-arm64-${{ github.ref_name }} \
-            -t ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-arm64-sha-${{ github.sha }} \
-            .
-          docker push ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-arm64
-          docker push ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-arm64-${{ github.ref_name }}
-          docker push ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-arm64-sha-${{ github.sha }}
+          set -euo pipefail
+          tags="$(bash tests/release_tags.sh build "$MODE" "$VARIANT" arm64 "$TAG" "${{ github.sha }}")"
+          args=()
+          for t in $tags; do args+=(-t "ghcr.io/gramatr/guards-unified:$t"); done
+          docker build -f "$DOCKERFILE" "${args[@]}" .
+          for t in $tags; do docker push "ghcr.io/gramatr/guards-unified:$t"; done
 
       - name: Trivy scan the just-published image before anyone pulls it
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
-          image-ref: ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-arm64-${{ github.ref_name }}
+          image-ref: ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-arm64-${{ needs.plan.outputs.tag }}
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
@@ -233,8 +280,8 @@ jobs:
     # versioned tag and the bare :cpu/:gpu tag. A failed scan or a failed attestation
     # fails the job before either tag moves, so an unscanned or unsigned image is
     # never the one users pull. The staging tag is the same manifest (same digest).
-    if: always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && needs.build-amd64.result == 'success' && needs.build-arm64.result == 'success'))
-    needs: [build-amd64, build-arm64]
+    if: always() && needs.plan.result == 'success' && (needs.plan.outputs.mode == 'recovery' || (needs.build-amd64.result == 'success' && needs.build-arm64.result == 'success'))
+    needs: [plan, build-amd64, build-arm64]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -260,32 +307,36 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Resolve version
-        id: version
+      - name: Plan the tags
+        id: tags
+        env:
+          MODE: ${{ needs.plan.outputs.mode }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          VARIANT: ${{ matrix.variant }}
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
-            echo "value=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
-          fi
+          set -euo pipefail
+          echo "staging=ghcr.io/gramatr/guards-unified:$(bash tests/release_tags.sh staging "$MODE" "$VARIANT" "$TAG")" >> "$GITHUB_OUTPUT"
+          list="$(bash tests/release_tags.sh promote "$MODE" "$VARIANT" "$TAG" | sed 's|^|ghcr.io/gramatr/guards-unified:|')"
+          { echo 'promote<<EOF_TAGS'; echo "$list"; echo 'EOF_TAGS'; } >> "$GITHUB_OUTPUT"
 
       - name: Merge amd64 + arm64 into one multi-arch staging tag
         id: merge
         run: |
-          staging=ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-staging-${{ steps.version.outputs.value }}
+          staging="${{ steps.tags.outputs.staging }}"
           docker buildx imagetools create -t "$staging" \
-            ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-amd64-${{ steps.version.outputs.value }} \
-            ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-arm64-${{ steps.version.outputs.value }}
+            ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-amd64-${{ needs.plan.outputs.tag }} \
+            ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-arm64-${{ needs.plan.outputs.tag }}
           digest="$(docker buildx imagetools inspect "$staging" --format '{{.Manifest.Digest}}')"
           case "$digest" in sha256:*) ;; *) echo "::error::could not read the staging digest (got '$digest')"; exit 1 ;; esac
-          echo "staging=$staging" >> "$GITHUB_OUTPUT"
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "--- the merged index:"
+          docker buildx imagetools inspect "$staging"
 
       - name: Trivy scan the merged image before any release tag points at it
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
-          image-ref: ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-staging-${{ steps.version.outputs.value }}
+          image-ref: ${{ steps.tags.outputs.staging }}
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
@@ -297,16 +348,20 @@ jobs:
           digest: ${{ steps.merge.outputs.digest }}
           name: ${{ matrix.variant }}
 
-      - name: Promote the attested image to the versioned and bare tags
+      - name: Promote the attested image to the tags users pull (a rehearsal promotes its scratch tag only)
+        env:
+          PROMOTE: ${{ steps.tags.outputs.promote }}
+          STAGING: ${{ steps.tags.outputs.staging }}
+          DIGEST: ${{ steps.merge.outputs.digest }}
         run: |
-          docker buildx imagetools create \
-            -t ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-${{ steps.version.outputs.value }} \
-            -t ghcr.io/gramatr/guards-unified:${{ matrix.variant }} \
-            "${{ steps.merge.outputs.staging }}"
-          for tag in ${{ matrix.variant }}-${{ steps.version.outputs.value }} ${{ matrix.variant }}; do
-            got="$(docker buildx imagetools inspect ghcr.io/gramatr/guards-unified:$tag --format '{{.Manifest.Digest}}')"
-            if [ "$got" != "${{ steps.merge.outputs.digest }}" ]; then
-              echo "::error::tag $tag points at $got, not the attested ${{ steps.merge.outputs.digest }}"
+          set -euo pipefail
+          args=()
+          for t in $PROMOTE; do args+=(-t "$t"); done
+          docker buildx imagetools create "${args[@]}" "$STAGING"
+          for t in $PROMOTE; do
+            got="$(docker buildx imagetools inspect "$t" --format '{{.Manifest.Digest}}')"
+            if [ "$got" != "$DIGEST" ]; then
+              echo "::error::tag $t points at $got, not the attested $DIGEST"
               exit 1
             fi
           done
@@ -318,8 +373,8 @@ jobs:
     # signing step, test counts (including the redaction self-test run against the
     # published CPU image) and the changelog text for this version.
     # `contents: write` is held by this job only; the build and merge jobs do not have it.
-    if: github.event_name == 'push'
-    needs: [merge-multiarch, gitleaks-assets]
+    if: needs.plan.outputs.mode != 'recovery'
+    needs: [plan, merge-multiarch, gitleaks-assets]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -335,15 +390,18 @@ jobs:
       - run: pip install fastapi httpx pydantic
 
       - name: Collect the evidence (changelog section, test counts, self-test on the published image)
+        env:
+          VER: ${{ needs.plan.outputs.ver }}
+          TAG: ${{ needs.plan.outputs.tag }}
         run: |
           mkdir -p release-assets
-          bash tests/release_evidence.sh "${GITHUB_REF_NAME#v}" "ghcr.io/gramatr/guards-unified:cpu-${GITHUB_REF_NAME}" release-assets
+          bash tests/release_evidence.sh "$VER" "ghcr.io/gramatr/guards-unified:cpu-$TAG" release-assets
 
       - name: Trivy scan of the published CPU image, full report, no ignore file
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
-          image-ref: ghcr.io/gramatr/guards-unified:cpu-${{ github.ref_name }}
+          image-ref: ghcr.io/gramatr/guards-unified:cpu-${{ needs.plan.outputs.tag }}
           format: json
           output: release-assets/trivy-cpu.json
           severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
@@ -354,7 +412,7 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
-          image-ref: ghcr.io/gramatr/guards-unified:gpu-${{ github.ref_name }}
+          image-ref: ghcr.io/gramatr/guards-unified:gpu-${{ needs.plan.outputs.tag }}
           format: json
           output: release-assets/trivy-gpu.json
           severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
@@ -372,7 +430,8 @@ jobs:
       - name: Create the release page
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          MODE: ${{ needs.plan.outputs.mode }}
         run: |
           set -euo pipefail
           cpu="$(docker buildx imagetools inspect "ghcr.io/gramatr/guards-unified:cpu-$TAG" --format '{{.Manifest.Digest}}')"
@@ -395,7 +454,13 @@ jobs:
             printf '```\n'
           } > release-body.md
           assets=(release-assets/trivy-cpu.json release-assets/trivy-gpu.json release-assets/sbom-cpu.spdx.json release-assets/sbom-gpu.spdx.json release-assets/test-counts.txt release-assets/gitleaks-patched_*)
-          if gh release view "$TAG" > /dev/null 2>&1; then
+          if [ "$MODE" = rehearsal ]; then
+            # A rehearsal makes a DRAFT prerelease: a draft does not create the git tag (nothing is
+            # published), so the real tag namespace is untouched. Delete it when done:
+            #   gh release delete "$TAG" --yes
+            { printf '**Rehearsal, not a release.** Run %s on commit %s. Delete this draft when you have read it.\n\n' "$GITHUB_RUN_ID" "$GITHUB_SHA"; cat release-body.md; } > release-body-rehearsal.md
+            gh release create "$TAG" "${assets[@]}" --draft --prerelease --target "$GITHUB_SHA" --title "[rehearsal] $TAG" --notes-file release-body-rehearsal.md
+          elif gh release view "$TAG" > /dev/null 2>&1; then
             # A re-run after this step failed part-way: update the page, do not fail on it.
             gh release upload "$TAG" "${assets[@]}" --clobber
             gh release edit "$TAG" --notes-file release-body.md
