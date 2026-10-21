@@ -48,6 +48,22 @@ jobs:
       - name: scan.sh option tests
         # Fabricated values only; works without gitleaks installed.
         run: bash tests/scan_options_test.sh
+      - name: scan.sh bash compatibility
+        # No bash-4-only syntax in app/*.sh, and the context rules still redact.
+        run: bash tests/scan_bash_compat_test.sh
+
+  scan-macos:
+    # macOS ships bash 3.2. v0.2.9 used a bash 4 expansion in scan.sh, so on a Mac
+    # every context rule silently stopped redacting while all of CI, which is
+    # Linux with bash 5, stayed green. This runs scan.sh under /bin/bash.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: scan.sh under the system bash (3.2)
+        run: |
+          /bin/bash --version | head -1
+          SCAN_BASH=/bin/bash /bin/bash tests/scan_bash_compat_test.sh
+          PATH="/bin:$PATH" /bin/bash tests/scan_options_test.sh
 
   cve-scan-source:
     runs-on: ubuntu-latest
