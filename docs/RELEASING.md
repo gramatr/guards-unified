@@ -198,7 +198,7 @@ For a release built with the attestation step, with `gh` installed and logged in
 
 ```
 gh attestation verify oci://ghcr.io/gramatr/guards-unified:cpu-vX.Y.Z --repo gramatr/guards-unified
-gh attestation verify oci://ghcr.io/gramatr/guards-unified:cpu-vX.Y.Z --repo gramatr/guards-unified --predicate-type https://spdx.dev/Spdx
+gh attestation verify oci://ghcr.io/gramatr/guards-unified:cpu-vX.Y.Z --repo gramatr/guards-unified --predicate-type https://spdx.dev/Document/v2.3
 ```
 
 The first checks the build provenance, the second the SBOM attestation. Replace

@@ -55,4 +55,4 @@ runs:
       run: |
         set -euo pipefail
         gh attestation verify "$REF" --repo "$REPO"
-        gh attestation verify "$REF" --repo "$REPO" --predicate-type https://spdx.dev/Spdx
+        gh attestation verify "$REF" --repo "$REPO" --predicate-type https://spdx.dev/Document/v2.3
