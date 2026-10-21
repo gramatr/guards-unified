@@ -309,6 +309,14 @@ def main() -> int:
         "config/yaml-mixed-case": ("secret: Hunter2Pass", ["Hunter2Pass"]),  # guards:synthetic
         "config/code-string-literal-const": (f'  const SUBJECT_TOKEN = "{sv}";', [sv]),  # guards:synthetic
         "config/code-string-literal-prop": (f"  const subjectToken = '{sv}';", [sv]),  # guards:synthetic
+        # Near-misses of the dependency rule must still redact: a 4-part version is not a 3-part one, an
+        # underscore makes the key a config name, an unscoped key needs an operator or a protocol, and a
+        # scoped package holding a non-version value is a value.
+        "config/dep-lookalike-4part-password": ('    "password": "1.2.3.4",', ["1.2.3.4"]),  # guards:synthetic
+        "config/dep-lookalike-underscore-key": ("client_secret: ^0.2.0", ["^0.2.0"]),  # guards:synthetic
+        "config/dep-lookalike-unscoped-bare": ('    "api-key-rotator": "2.0.0",', ["2.0.0"]),  # guards:synthetic
+        "config/dep-lookalike-scoped-nonversion": ('    "@scope/api-key": "Xk9mQ4vT2pLw8RzN5bJc",', ["Xk9mQ4vT2pLw8RzN5bJc"]),  # guards:synthetic
+        "config/dep-lookalike-token-long": ('    "access-token": "Tq7vN2xLm9Kd4RzP8wYbQ3sF",', ["Tq7vN2xLm9Kd4RzP8wYbQ3sF"]),  # guards:synthetic
         "config/code-quoted-in-object": (f'body: JSON.stringify({{ subject_token: "{sv}", provider: P }}),', [sv]),  # guards:synthetic
     }
     for cname, (text, material) in config_secrets.items():
@@ -344,6 +352,18 @@ def main() -> int:
         "benign/code-type-annotation-semicolon": "  access_token: string;",  # guards:synthetic
         "benign/code-generic-type": "  token: Promise<TokenSet>;",  # guards:synthetic
         "benign/code-return-object": "  return { idToken: idToken };",  # guards:synthetic
+        # A dependency whose package NAME contains a credential word, with a version specifier as the
+        # value (a package.json or a lockfile/YAML line): not a credential (coordination: the platform's
+        # own @gramatr/credentials-lifecycle tripped the publish guard on every commit).
+        "benign/dep-scoped-caret": '    "@gramatr/credentials-lifecycle": "^0.2.0",',
+        "benign/dep-scoped-caret-token": '    "@gramatr/token-authority": "^0.2.0",',
+        "benign/dep-diff-line": '+    "@gramatr/credentials-lifecycle": "^0.2.0",',
+        "benign/dep-workspace": '    "@gramatr/credentials-lifecycle": "workspace:*",',
+        "benign/dep-scoped-bare-version": '    "@gramatr/credentials-lifecycle": "0.2.0",',
+        "benign/dep-range": '    "@gramatr/token-authority": ">=0.2.0 <1.0.0",',
+        "benign/dep-tilde-unscoped": '    "secret-manager-client": "~1.4.2",',
+        "benign/dep-api-key-package": '    "api-key-rotator": "^2.0.0",',
+        "benign/dep-yaml": "credentials-lifecycle: ^0.2.0",
         "benign/ref-key-secretkeyref": 'secretKeyRef: {name: db-creds, key: password}',
         "benign/plural-heading-code-span": "Query-string tokens: `access_token=`, presigned URLs",
         "benign/base64-sentence": '{"note": "' + base64.b64encode(b"The quick brown fox jumps over the lazy dog and keeps running far away").decode() + '"}',
