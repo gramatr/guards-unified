@@ -55,6 +55,7 @@ fi
 echo "build inputs"
 step "dockerfile_pins_test" bash tests/dockerfile_pins_test.sh
 step "scan_bash_compat_test" bash tests/scan_bash_compat_test.sh
+step "release_evidence_test" bash tests/release_evidence_test.sh
 
 echo "without gitleaks (as the CI lint job sees it)"
 step "scan_options_test" env "PATH=$SHADOW" bash tests/scan_options_test.sh
