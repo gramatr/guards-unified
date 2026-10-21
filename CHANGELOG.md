@@ -2,7 +2,7 @@
 
 Covers both packages of the guards line, `guards-unified` (the server image,
 this repository) and [`claude-plugin-guards`](https://github.com/gramatr/claude-plugin-guards)
-(the Claude Code plugin), from the first tagged release to v0.2.9.
+(the Claude Code plugin), from the first tagged release to v0.2.10.
 
 ## How the versions work
 
@@ -24,7 +24,7 @@ this repository) and [`claude-plugin-guards`](https://github.com/gramatr/claude-
   in the commit history) no longer exist. Server pull request references below
   are to the current repository; entries from before the recreation have none.
   Plugin pull request numbers were not affected.
-- All dates are 2026-10-18 or 2026-10-19.
+- All dates are 2026-10-18 to 2026-10-21.
 
 What was hardened, what was loosened and why is in
 [docs/TRADEOFFS.md](docs/TRADEOFFS.md). What the server does not catch is in
@@ -32,11 +32,31 @@ What was hardened, what was loosened and why is in
 
 ---
 
-## [Unreleased]
+## [0.2.10] - 2026-10-21
 
 ### guards-unified
 
 - Changed: the default `PII_ENTITIES` is now the structured kinds a validator can confirm (`EMAIL_ADDRESS`, `PHONE_NUMBER`, `US_SSN`, `US_PASSPORT`, `CREDIT_CARD`, `IBAN_CODE`). `IP_ADDRESS`, `LOCATION` and `PERSON` are off by default: an address, a host or city-like name and a tool name are routine in operator and infrastructure output, and on one set of real transcripts these three were 96% of all PII notices. With no `PERSON` or `LOCATION` the model is not run, so a scan is also faster. Restore the old default with `PII_ENTITIES=PERSON,LOCATION,EMAIL_ADDRESS,PHONE_NUMBER,US_SSN,US_PASSPORT,CREDIT_CARD,IBAN_CODE,IP_ADDRESS`. Secret detection is unchanged.
+- Fixed: a dependency line whose package name holds a credential word, with a version specifier as its value (a scoped `credentials-lifecycle` at `^0.2.0`), is no longer redacted as a secret (#56). The key must be a package-name segment and the value an operator-prefixed range, a protocol (`workspace:`, `link:`, `file:`) or, for a scoped package, a bare three-part version; near-misses still redact. The self-test grew from 160 to 174 cases.
+- Fixed: stock macOS bash 3.2 redacts again. `scan.sh` no longer uses bash 4 syntax (#43), and long unbroken runs are found with `awk` because macOS `grep` refuses a repetition count above 255, which had silently turned the long-run masking off (#53).
+- Fixed: gitleaks skipped an input whose random temp name looked like an archive extension and scanned nothing; the input now has a fixed name (#44).
+- Added: every release is attested. Build provenance and an SBOM are generated and verified against the merged image's digest before any release tag moves (#45), and the GitHub Release page is created from CI with the scan output, SBOMs, test counts and notes (#49), plus standalone patched `gitleaks` binaries for linux and darwin on amd64 and arm64 (#50). The first release built this way is the first to carry attestations.
+- Added: a release can be rehearsed end to end on a scratch tag from any branch without touching what users pull (#54).
+- Security: base images are pinned by digest, gitleaks by commit and Actions by SHA (#46), with Dependabot for the SHAs and digests (#47, #48).
+- Changed: `LICENSE` is the plain MIT text; the Llama notice moved to `NOTICE` (#52).
+
+### claude-plugin-guards
+
+- Added: the outbound guard. A command that would send credential material to a remote host (`curl`, `wget` and similar) is stopped before it runs, with a teaching message for the safe form, a literal-credential path, an awk command parser with an adversarial corpus run under three awks, and the documented safe forms verified against real `curl` and `wget` (#91 to #93, #99, #101 to #103).
+- Added: `GUARDS_ALLOW_CRED_PATHS`, a colon-separated list of exact absolute paths the credential-file guard lets through, set in the launch environment only; the narrow alternative to `GUARDS_ALLOW_CRED_READ=1` (#122). A tested registry of tools that use a credential without printing it (`age -i`, `ssh -i`, `kubectl --kubeconfig` and others) means a reader word elsewhere on the same line no longer turns the use into a deny (#112, #115, #117).
+- Added: the patched gitleaks is installed by self-heal on hosts without Docker, verified against hashes the plugin carries (#111); a GitHub Release page is created for each plugin tag from CI (#110).
+- Fixed: the credential-file guard resolves symlinks on macOS (no GNU `realpath -m`) (#95); the deadline watchdog no longer reports a timeout that did not happen (#94) and a deny is no longer lost under load when `timeout` is missing (#98); a glob in a command is expanded in sorted order (#104).
+- Fixed: on macOS the publish guard now finds and scans a file the command names (`git commit -F msg.txt`, `--body-file`, `cat X`); before, the relative path was never resolved, so a secret in that file was not scanned there (#124).
+- Fixed: self-heal no longer makes the metrics directory world-writable. It is mode 0700 for a host user with uid 1000, 0700 plus an ACL entry where `setfacl` exists, and 0777 with a warning only otherwise (#126, issue 92).
+- Changed: the vendored `scan.sh` is synced with the server's (#100, #105, #116, #125).
+- Changed: the Mac-sensitive hook suites run on macOS in CI; the job now covers 20 suites under the system bash 3.2, and the portability defects it found in the tests are fixed (#100, #120, #124).
+- Changed: docs state the limits of the registry exemption, that the credential-file guard checks only the first 60 path-like words, and that without a Hugging Face token the service does not start (#118, #119, #121); the plugin ships its license and the marketplace has a README (#113, #114).
+- Security: the vendored Dockerfile and the workflows' Actions are pinned, with Dependabot (#106, #107).
 
 ## [0.2.9] - 2026-10-20
 
