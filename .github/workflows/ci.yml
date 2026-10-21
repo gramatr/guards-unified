@@ -51,6 +51,10 @@ jobs:
       - name: scan.sh bash compatibility
         # No bash-4-only syntax in app/*.sh, and the context rules still redact.
         run: bash tests/scan_bash_compat_test.sh
+      - name: Release evidence script
+        # The release page is built from tests/release_evidence.sh; it must refuse a
+        # missing changelog section, a failing suite and an active .trivyignore entry.
+        run: bash tests/release_evidence_test.sh
 
   scan-macos:
     # macOS ships bash 3.2. v0.2.9 used a bash 4 expansion in scan.sh, so on a Mac

@@ -65,6 +65,16 @@ jobs:
             echo "::error::Tag v$tag does not match VERSION file ($file) on this commit. Bump VERSION in a PR, merge it, THEN tag that merge commit."
             exit 1
           fi
+      - name: CHANGELOG has a section for this version
+        # The release page (job `release`) takes its notes from CHANGELOG.md. Checking it
+        # here means a missing entry stops the run before any image is published,
+        # not after.
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          if ! grep -q "^## \[$ver\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## [$ver]' section. Add it in a PR, merge it, THEN tag that merge commit."
+            exit 1
+          fi
 
   build-amd64:
     if: github.event_name == 'push'
@@ -260,3 +270,93 @@ jobs:
               exit 1
             fi
           done
+
+  release:
+    # Created only after the images are merged, scanned, attested and promoted, so a
+    # failed publish never leaves a release page. Evidence is produced here by CI, not
+    # by hand: the unfiltered Trivy scan of each published image, the SBOMs from the
+    # signing step, test counts (including the redaction self-test run against the
+    # published CPU image) and the changelog text for this version.
+    # `contents: write` is held by this job only; the build and merge jobs do not have it.
+    if: github.event_name == 'push'
+    needs: [merge-multiarch]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: read
+      actions: read   # download the SBOM artifacts uploaded by this run
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - run: pip install fastapi httpx pydantic
+
+      - name: Collect the evidence (changelog section, test counts, self-test on the published image)
+        run: |
+          mkdir -p release-assets
+          bash tests/release_evidence.sh "${GITHUB_REF_NAME#v}" "ghcr.io/gramatr/guards-unified:cpu-${GITHUB_REF_NAME}" release-assets
+
+      - name: Trivy scan of the published CPU image, full report, no ignore file
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ghcr.io/gramatr/guards-unified:cpu-${{ github.ref_name }}
+          format: json
+          output: release-assets/trivy-cpu.json
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: "0"
+
+      - name: Trivy scan of the published GPU image, full report, no ignore file
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ghcr.io/gramatr/guards-unified:gpu-${{ github.ref_name }}
+          format: json
+          output: release-assets/trivy-gpu.json
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: "0"
+
+      - name: Download the SBOMs written by the signing step
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "${{ github.run_id }}" -n sbom-cpu.spdx.json -D release-assets
+          gh run download "${{ github.run_id }}" -n sbom-gpu.spdx.json -D release-assets
+
+      - name: Create the release page
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          cpu="$(docker buildx imagetools inspect "ghcr.io/gramatr/guards-unified:cpu-$TAG" --format '{{.Manifest.Digest}}')"
+          gpu="$(docker buildx imagetools inspect "ghcr.io/gramatr/guards-unified:gpu-$TAG" --format '{{.Manifest.Digest}}')"
+          {
+            cat release-assets/release-notes.md
+            printf '\n---\n\n### Images\n\n'
+            printf -- '- `ghcr.io/gramatr/guards-unified:cpu-%s` (`%s`)\n' "$TAG" "$cpu"
+            printf -- '- `ghcr.io/gramatr/guards-unified:gpu-%s` (`%s`)\n' "$TAG" "$gpu"
+            printf '\n### Verify where it came from\n\n```\n'
+            printf 'gh attestation verify oci://ghcr.io/gramatr/guards-unified:cpu-%s --repo gramatr/guards-unified\n' "$TAG"
+            printf 'gh attestation verify oci://ghcr.io/gramatr/guards-unified:cpu-%s --repo gramatr/guards-unified --predicate-type https://spdx.dev/Document/v2.3\n' "$TAG"
+            printf '```\n\nAttestations show which workflow built the image and what is in it. They do not show that the code is free of bugs or malice.\n'
+            printf '\n### Attached evidence\n\n'
+            printf -- '- `trivy-cpu.json`, `trivy-gpu.json`: full Trivy image scans, all severities, no ignore file.\n'
+            printf -- '- `sbom-cpu.spdx.json`, `sbom-gpu.spdx.json`: SPDX SBOMs.\n'
+            printf -- '- `test-counts.txt`: suite results for this commit:\n\n```\n'
+            cat release-assets/test-counts.txt
+            printf '```\n'
+          } > release-body.md
+          assets=(release-assets/trivy-cpu.json release-assets/trivy-gpu.json release-assets/sbom-cpu.spdx.json release-assets/sbom-gpu.spdx.json release-assets/test-counts.txt)
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            # A re-run after this step failed part-way: update the page, do not fail on it.
+            gh release upload "$TAG" "${assets[@]}" --clobber
+            gh release edit "$TAG" --notes-file release-body.md
+          else
+            gh release create "$TAG" "${assets[@]}" --verify-tag --title "$TAG" --notes-file release-body.md
+          fi

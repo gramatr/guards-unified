@@ -57,6 +57,23 @@ The tag push in this repo triggers `publish.yml`, which:
    after this pipeline change, starting with the release after v0.2.9; images
    from earlier releases carry no attestation.
 
+4. **`release`**: after `merge-multiarch` succeeds for both variants, creates the
+   GitHub Release for the tag, from CI and not by hand. It runs
+   `tests/release_evidence.sh` (the `## [X.Y.Z]` section of `CHANGELOG.md` as the
+   notes, and the test suites with their own summary lines, including the redaction
+   self-test run against the published CPU image), runs a full Trivy scan of each
+   published image with every severity and no ignore file, downloads the SBOMs
+   written by the signing step, and attaches `trivy-cpu.json`, `trivy-gpu.json`,
+   `sbom-cpu.spdx.json`, `sbom-gpu.spdx.json` and `test-counts.txt`. The page also
+   lists the image digests and the `gh attestation verify` commands. Only this job
+   has `contents: write`. A failed publish therefore leaves no release page. A
+   re-run after this job failed part-way updates the existing page instead of
+   failing on it.
+
+   The changelog check runs first, in `verify-tag-matches-version`: a tag whose
+   version has no `## [X.Y.Z]` section in `CHANGELOG.md` stops the run before any
+   image is published. Add the section in the version-bump PR.
+
 Nothing to do here but watch the Actions run go green.
 
 ### Tags that exist
