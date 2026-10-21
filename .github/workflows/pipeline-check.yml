@@ -12,6 +12,12 @@ name: Pipeline check
 #      use the self-hosted arm64/GPU runner, so the arm64/GPU build can
 #      reach it. Tested by running a trivial job on that runner.
 #
+#   3. Image signing (epic #58, #51): a scratch multi-arch image is attested
+#      (provenance + SBOM) through the same local action the release uses, then
+#      verified from the registry. Proves the OIDC and attestation permissions
+#      and the verify command without a release. The attestations go to the
+#      public Sigstore log, which is permanent; the subject is an empty image.
+#
 # Never touches :cpu, :gpu, or any vX.Y.Z tag. workflow_dispatch only
 # (no pull_request trigger), so nobody without write access can run
 # code on the self-hosted runner from this public repo.
@@ -55,3 +61,40 @@ jobs:
           echo "arch: $(uname -m)"
           echo "host: $(hostname)"
           test "$(uname -m)" = "aarch64"
+
+  attest-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # FROM scratch with a COPY needs no emulation, so a two-platform index builds
+      # on this runner and has the same shape (an index of two manifests) as the
+      # release's merged image.
+      - name: Push a two-platform scratch image
+        run: |
+          printf 'FROM scratch\nCOPY VERSION /VERSION\nLABEL org.opencontainers.image.description="pipeline-check scratch image, safe to delete"\n' > "$RUNNER_TEMP/Dockerfile.scratch"
+          docker buildx build --push --platform linux/amd64,linux/arm64 \
+            -f "$RUNNER_TEMP/Dockerfile.scratch" -t ghcr.io/gramatr/guards-unified:attest-check .
+          digest="$(docker buildx imagetools inspect ghcr.io/gramatr/guards-unified:attest-check --format '{{.Manifest.Digest}}')"
+          case "$digest" in sha256:*) ;; *) echo "::error::no digest (got '$digest')"; exit 1 ;; esac
+          echo "DIGEST=$digest" >> "$GITHUB_ENV"
+
+      - name: Attest provenance and SBOM, then verify
+        uses: ./.github/actions/attest-image
+        with:
+          image: ghcr.io/gramatr/guards-unified
+          digest: ${{ env.DIGEST }}
+          name: attest-check

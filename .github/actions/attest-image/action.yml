@@ -1,0 +1,58 @@
+name: Attest image
+description: >
+  SBOM, build provenance and SBOM attestations for one image digest, pushed to the
+  registry, then verified with `gh attestation verify`. Fails if any step fails, so a
+  caller that promotes tags after this step never promotes an unattested image.
+  The calling job needs: id-token: write, attestations: write, packages: write,
+  contents: read, and a prior docker login to ghcr.io.
+
+inputs:
+  image:
+    description: Image name without a tag, e.g. ghcr.io/gramatr/guards-unified
+    required: true
+  digest:
+    description: Manifest digest to attest, sha256:<hex> (the multi-arch index, not a per-arch image)
+    required: true
+  name:
+    description: Short unique label for the SBOM file (e.g. cpu, gpu, attest-check)
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # Actions are pinned to full commit SHAs (tag in the comment) because this step
+    # holds the OIDC token that signs the image.
+    - name: Generate SBOM (Syft, SPDX JSON)
+      uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+      with:
+        image: ${{ inputs.image }}@${{ inputs.digest }}
+        format: spdx-json
+        output-file: sbom-${{ inputs.name }}.spdx.json
+        artifact-name: sbom-${{ inputs.name }}.spdx.json
+
+    - name: Attest build provenance
+      uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      with:
+        subject-name: ${{ inputs.image }}
+        subject-digest: ${{ inputs.digest }}
+        push-to-registry: true
+        create-storage-record: false
+
+    - name: Attest SBOM
+      uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+      with:
+        subject-name: ${{ inputs.image }}
+        subject-digest: ${{ inputs.digest }}
+        sbom-path: sbom-${{ inputs.name }}.spdx.json
+        push-to-registry: true
+
+    - name: Verify both attestations from the registry
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REF: oci://${{ inputs.image }}@${{ inputs.digest }}
+        REPO: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        gh attestation verify "$REF" --repo "$REPO"
+        gh attestation verify "$REF" --repo "$REPO" --predicate-type https://spdx.dev/Spdx

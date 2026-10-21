@@ -37,9 +37,25 @@ The tag push in this repo triggers `publish.yml`, which:
    natively (no QEMU), publishes to `:<variant>-arm64-vX.Y.Z`, and Trivy-scans
    each. Runs in parallel with `build-amd64`.
 3. **`merge-multiarch`**: once both succeed, combines each variant's amd64 and
-   arm64 image into the multi-arch `:<variant>-vX.Y.Z` and the floating
-   `:cpu` / `:gpu` tags that consumers pull, via `docker buildx imagetools
-   create`. Trivy-scans the merged result too.
+   arm64 image into one multi-arch image under a staging tag
+   (`:<variant>-staging-vX.Y.Z`) via `docker buildx imagetools create`, and then,
+   in this order:
+   1. Trivy-scans the merged image.
+   2. Generates an SBOM (Syft, SPDX JSON) and attests build provenance and the
+      SBOM against the merged image's digest (GitHub attestations, signed through
+      Sigstore, pushed to the registry), then verifies both with
+      `gh attestation verify`.
+   3. Only then promotes the same digest to `:<variant>-vX.Y.Z` and the floating
+      `:cpu` / `:gpu`, and checks that both tags point at the attested digest.
+
+   A failed scan, a failed attestation or a failed verification fails the job
+   before either tag moves, so an unscanned or unsigned image is never the one
+   users pull (decided 2026-10-21, issue #51). The cost: an outage of the signing
+   service blocks a release until the job is re-run (see the manual recovery path).
+   The `build-*` jobs still publish per-architecture tags that carry no
+   attestation; only the merged index is attested. This applies to releases built
+   after this pipeline change, starting with the release after v0.2.9; images
+   from earlier releases carry no attestation.
 
 Nothing to do here but watch the Actions run go green.
 
@@ -50,7 +66,8 @@ For each variant (`cpu`, `gpu`):
 | Tag | Meaning |
 |---|---|
 | `<variant>` | Floats to the latest release. Written only by `merge-multiarch`. |
-| `<variant>-vX.Y.Z` | The multi-arch image for that release. Pin this for reproducible deployments. |
+| `<variant>-vX.Y.Z` | The multi-arch image for that release. Pin this for reproducible deployments. Written only after the image is scanned and attested. |
+| `<variant>-staging-vX.Y.Z` | The merged image before scanning and attestation. Not for deployment; a leftover one means a release run stopped before promotion. |
 | `<variant>-amd64`, `<variant>-arm64` | Latest per-architecture build. |
 | `<variant>-amd64-vX.Y.Z`, `<variant>-arm64-vX.Y.Z` | Per-architecture build for a release (the inputs to the merge). |
 | `<variant>-sha-<commit>`, `<variant>-arm64-sha-<commit>` | Per-commit builds. |
@@ -174,6 +191,28 @@ Then run the **Pipeline check** workflow (Actions tab → *Pipeline check* →
 touching `:cpu` / `:gpu`: one job pushes an empty scratch image to `:link-check`
 using `GITHUB_TOKEN`, the other runs on the arm64 runner. If the registry job
 fails with `permission_denied: write_package`, re-check step 1.
+
+## Verify where an image came from
+
+For a release built with the attestation step, with `gh` installed and logged in:
+
+```
+gh attestation verify oci://ghcr.io/gramatr/guards-unified:cpu-vX.Y.Z --repo gramatr/guards-unified
+gh attestation verify oci://ghcr.io/gramatr/guards-unified:cpu-vX.Y.Z --repo gramatr/guards-unified --predicate-type https://spdx.dev/Spdx
+```
+
+The first checks the build provenance, the second the SBOM attestation. Replace
+`cpu` with `gpu` for the GPU image. To read the SBOM itself, add `--format json`
+and read the predicate, or download the `sbom-<variant>.spdx.json` artifact from
+the Publish run.
+
+What this proves: the image was built by this repository's `publish.yml` from
+the tagged commit, and the SBOM lists what the build put into it. What it does
+not prove: that the code is free of bugs or malice, or that the image has no
+vulnerabilities (the Trivy scan covers known ones). Do not rely on a
+release for this until the Publish run for it shows the attestation steps green;
+`pipeline-check` (the `attest-check` job) proves the signing path without a
+release.
 
 ## Verify a release live
 

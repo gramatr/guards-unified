@@ -177,9 +177,20 @@ jobs:
     # Runs automatically on a normal tag push, once both halves exist.
     # workflow_dispatch stays as a manual recovery path only -- e.g. if
     # this step itself needs re-running without rebuilding either half.
+    #
+    # Order matters (epic #58, issue #51): the merged image is first written to a
+    # STAGING tag, scanned, attested and verified, and only then promoted to the
+    # versioned tag and the bare :cpu/:gpu tag. A failed scan or a failed attestation
+    # fails the job before either tag moves, so an unscanned or unsigned image is
+    # never the one users pull. The staging tag is the same manifest (same digest).
     if: always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && needs.build-amd64.result == 'success' && needs.build-arm64.result == 'success'))
     needs: [build-amd64, build-arm64]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write       # Sigstore keyless signing of the attestations
+      attestations: write
     strategy:
       matrix:
         variant: [cpu, gpu]
@@ -188,7 +199,7 @@ jobs:
       # step has no working directory content at all and re-flags the
       # 34 already-tracked, upstream-blocked gitleaks Go CVEs (#7) as
       # new, every single run. Confirmed by testing this job for real
-      # against v0.1.2 (2026-10-19).
+      # against v0.1.2 (2026-10-19). Also provides the local attest-image action.
       - uses: actions/checkout@v4
 
       - uses: docker/setup-buildx-action@v3
@@ -208,21 +219,44 @@ jobs:
             echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Merge amd64 + arm64 into one multi-arch tag
+      - name: Merge amd64 + arm64 into one multi-arch staging tag
+        id: merge
         run: |
-          docker buildx imagetools create \
-            -t ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-${{ steps.version.outputs.value }} \
+          staging=ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-staging-${{ steps.version.outputs.value }}
+          docker buildx imagetools create -t "$staging" \
             ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-amd64-${{ steps.version.outputs.value }} \
             ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-arm64-${{ steps.version.outputs.value }}
-          docker buildx imagetools create \
-            -t ghcr.io/gramatr/guards-unified:${{ matrix.variant }} \
-            ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-${{ steps.version.outputs.value }}
+          digest="$(docker buildx imagetools inspect "$staging" --format '{{.Manifest.Digest}}')"
+          case "$digest" in sha256:*) ;; *) echo "::error::could not read the staging digest (got '$digest')"; exit 1 ;; esac
+          echo "staging=$staging" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
-      - name: Trivy scan the merged tag before anyone pulls it
+      - name: Trivy scan the merged image before any release tag points at it
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
-          image-ref: ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-${{ steps.version.outputs.value }}
+          image-ref: ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-staging-${{ steps.version.outputs.value }}
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
+
+      - name: Attest provenance and SBOM, then verify
+        uses: ./.github/actions/attest-image
+        with:
+          image: ghcr.io/gramatr/guards-unified
+          digest: ${{ steps.merge.outputs.digest }}
+          name: ${{ matrix.variant }}
+
+      - name: Promote the attested image to the versioned and bare tags
+        run: |
+          docker buildx imagetools create \
+            -t ghcr.io/gramatr/guards-unified:${{ matrix.variant }}-${{ steps.version.outputs.value }} \
+            -t ghcr.io/gramatr/guards-unified:${{ matrix.variant }} \
+            "${{ steps.merge.outputs.staging }}"
+          for tag in ${{ matrix.variant }}-${{ steps.version.outputs.value }} ${{ matrix.variant }}; do
+            got="$(docker buildx imagetools inspect ghcr.io/gramatr/guards-unified:$tag --format '{{.Manifest.Digest}}')"
+            if [ "$got" != "${{ steps.merge.outputs.digest }}" ]; then
+              echo "::error::tag $tag points at $got, not the attested ${{ steps.merge.outputs.digest }}"
+              exit 1
+            fi
+          done
