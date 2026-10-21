@@ -32,6 +32,12 @@ What was hardened, what was loosened and why is in
 
 ---
 
+## [Unreleased]
+
+### guards-unified
+
+- Changed: the default `PII_ENTITIES` is now the structured kinds a validator can confirm (`EMAIL_ADDRESS`, `PHONE_NUMBER`, `US_SSN`, `US_PASSPORT`, `CREDIT_CARD`, `IBAN_CODE`). `IP_ADDRESS`, `LOCATION` and `PERSON` are off by default: an address, a host or city-like name and a tool name are routine in operator and infrastructure output, and on one set of real transcripts these three were 96% of all PII notices. With no `PERSON` or `LOCATION` the model is not run, so a scan is also faster. Restore the old default with `PII_ENTITIES=PERSON,LOCATION,EMAIL_ADDRESS,PHONE_NUMBER,US_SSN,US_PASSPORT,CREDIT_CARD,IBAN_CODE,IP_ADDRESS`. Secret detection is unchanged.
+
 ## [0.2.9] - 2026-10-20
 
 ### guards-unified
