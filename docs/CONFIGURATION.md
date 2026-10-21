@@ -102,13 +102,47 @@ Build inputs are pinned so a rebuild cannot change the image without a commit:
   `Dockerfile.cpu`. To bump, pick a release, read its digest with
   `docker buildx imagetools inspect ghcr.io/astral-sh/uv:<version>`, and change
   tag and digest together in both files.
-- **Base images and gitleaks:** explicit tags (`python:3.12-slim`, gitleaks by
-  release).
+- **Base images** (`golang:1.26-bookworm`, `python:3.12-slim`): tag and digest
+  together, in `Dockerfile` and `Dockerfile.cpu`.
+- **gitleaks:** built from a commit, not a tag. `GITLEAKS_COMMIT` is the commit
+  the `GITLEAKS_VERSION` release tag pointed at when it was checked; a tag can be
+  moved, a commit cannot.
+- **GitHub Actions:** every `uses:` in `.github` is a full commit SHA with the
+  version in a comment.
 - **The injection model:** the revision above.
-- `tests/dockerfile_pins_test.sh` fails on a floating `latest` tag or a missing
-  tag for any external image, in `run-all.sh` and in CI.
+- `tests/dockerfile_pins_test.sh` fails on a missing or `latest` tag, a missing
+  digest on any external image, a `git clone --branch/--tag`, and a `uses:` that
+  is not a full SHA. It runs in `run-all.sh` and in CI.
 
-Python packages are still installed by version floor, not by hash.
+What is still not pinned: Python packages are installed by version floor, not by
+hash; the Go modules gitleaks needs are resolved by `go get`/`go mod tidy` at the
+named versions and checked against the Go checksum database, not vendored; and
+the runtime stage runs `apt-get upgrade` on purpose, so the OS packages on top
+of the pinned base image are whatever Debian ships on build day. That is a
+deliberate choice: the base image alone lags Debian's security updates (CI's
+Trivy scan once flagged a `libssl3t64` CVE minutes after a clean scan of the same
+commit, see the comment in `Dockerfile.cpu`), so a rebuild of the same commit can differ in OS
+packages even though every input above is fixed. Reproducible down to the base
+image and the source, not down to the last package.
+
+### Refreshing the pins
+
+Pinning trades freshness for reproducibility: a base-image or action fix now
+arrives only when someone bumps it. The weekly scheduled CVE scan (`ci.yml`)
+still runs against whatever the pins resolve to and raises an issue when a
+vulnerability appears; bump in response. To bump:
+
+1. **Base image:** `docker buildx imagetools inspect python:3.12-slim --format '{{.Manifest.Digest}}'`
+   (likewise for `golang:1.26-bookworm`); change the digest in both Dockerfiles.
+2. **gitleaks:** `git ls-remote https://github.com/gitleaks/gitleaks.git refs/tags/<tag>`;
+   change `GITLEAKS_VERSION` and `GITLEAKS_COMMIT` together, in both Dockerfiles
+   and in the plugin's vendored Dockerfile. If the tag is annotated, use the
+   `^{}` line, which is the commit.
+3. **An action:** `gh api repos/<owner>/<repo>/git/ref/tags/<tag>` (for an annotated
+   tag, follow it with `gh api repos/<owner>/<repo>/git/tags/<sha>` to get the
+   commit); change the SHA and the version in the comment.
+4. Run `bash tests/run-all.sh`, open a PR, and let CI rebuild and re-run the CVE
+   scan on the image. Do not merge a bump whose scan fails.
 
 ## Budgets and limits
 

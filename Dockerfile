@@ -41,19 +41,25 @@
 #     pii-guard's pyproject.toml comment explains why the download-step
 #     form breaks under `uv`/non-interactive installs
 
-FROM golang:1.26-bookworm AS gitleaks
+# Base images are pinned by tag and digest; refresh with docs/CONFIGURATION.md, Supply chain.
+FROM golang:1.26-bookworm@sha256:fe3da92a5cb2881e4aa75e625cb0b7c50571632fb4cf340cbe53e6ccdcffdd51 AS gitleaks
 ARG GITLEAKS_VERSION=v8.30.1
+# The commit the release tag points at (checked 2026-10-21). A tag can be moved; a commit cannot.
+ARG GITLEAKS_COMMIT=83d9cd684c87d95d656c1458ef04895a7f1cbd8e
 # Built from the release tag with fixed Go modules instead of copying the
 # official image's binary: v8.30.1 is the latest release but bundles
 # klauspost/compress, x/crypto, x/text and a Go stdlib with known HIGH CVEs.
 # Drop the `go get` once gitleaks ships a release that carries the fixes.
-RUN git clone --depth 1 --branch "${GITLEAKS_VERSION}" https://github.com/gitleaks/gitleaks.git /src
+RUN git init -q /src && cd /src \
+    && git remote add origin https://github.com/gitleaks/gitleaks.git \
+    && git fetch -q --depth 1 origin "${GITLEAKS_COMMIT}" \
+    && git checkout -q --detach FETCH_HEAD
 WORKDIR /src
 RUN go get github.com/klauspost/compress@v1.18.7 golang.org/x/crypto@v0.55.0 golang.org/x/text@v0.41.0 \
     && go mod tidy \
     && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X github.com/zricethezav/gitleaks/v8/version.Version=${GITLEAKS_VERSION}" -o /usr/bin/gitleaks .
 
-FROM python:3.12-slim
+FROM python:3.12-slim@sha256:cb33f7f771ecec2ef1225cf39b159591a040391bd73e4c01f00fdfc4c47611d2
 COPY --from=gitleaks /usr/bin/gitleaks /usr/bin/gitleaks
 # upgrade, not just install -- see Dockerfile.cpu's comment
 # (CVE-2026-84782 in libssl3t64, found the same way).
