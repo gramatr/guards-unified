@@ -84,6 +84,38 @@ The tag push in this repo triggers `publish.yml`, which:
 
 Nothing to do here but watch the Actions run go green.
 
+### Rehearse a release
+
+The first real tag should not be the first time the pipeline runs end to end. A rehearsal runs every job
+of `publish.yml` (build on both architectures, the standalone gitleaks, the merge, the scan, the signing
+and its verification, the promote step, the evidence and the release page) on a scratch tag, from any
+branch, without touching what users pull:
+
+```
+gh workflow run publish.yml -R gramatr/guards-unified --ref <branch> -f rehearsal=true
+```
+
+- **Names.** The plan job (`tests/release_plan.sh`) gives the run the tag `rehearsal-<run number>`, and
+  the VERSION file's version is the one whose `CHANGELOG.md` section must exist. The tag lists come from
+  `tests/release_tags.sh`. Images are `cpu-amd64-rehearsal-N`, `cpu-arm64-rehearsal-N`,
+  `cpu-staging-rehearsal-N` and `cpu-rehearsal-N` (and the same for `gpu`).
+- **What it never writes.** The bare `:cpu` and `:gpu` tags, the per-architecture latest tags
+  (`:cpu-amd64`, `:cpu-arm64`) and the per-commit tags. `tests/release_plan_test.sh` checks that for
+  every variant and architecture, and that `publish.yml` itself names no bare tag.
+- **The release page** is a **draft prerelease** titled `[rehearsal] rehearsal-N`. A draft does not create
+  a git tag, so the tag namespace is untouched. Read it, then delete it:
+  `gh release delete rehearsal-N --yes`.
+- **Cost.** About as long as a release (the two arm64 builds run one after the other on the DGX runner), on
+  that shared host. The signing writes entries to the public Sigstore log for the scratch images; those
+  are permanent. The scratch image tags stay in the package until someone deletes them in the package
+  settings (`GITHUB_TOKEN` cannot delete package versions).
+- **What it proves and what it does not.** It proves the jobs, the permissions, the artifact hand-offs, the
+  merged index, the signing and verification, the promote check and the release-page assembly. It does not
+  exercise the tag-push trigger itself or `gh release create --verify-tag` (a real tag is needed for
+  those); the plan for a tag push is unit-tested instead.
+- **Use the output.** Run the verify commands from "Verify where an image came from" below against the
+  rehearsal's `cpu-rehearsal-N`; that is how the verify-it-yourself commands are proven before a release.
+
 ### Tags that exist
 
 For each variant (`cpu`, `gpu`):
