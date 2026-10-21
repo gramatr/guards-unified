@@ -376,6 +376,10 @@ V_BARE='[^[:space:]"'"'"']{4,}'
 # the context rules and put back afterwards. A value that IS such a run (a
 # long token after a key) is still redacted: the placeholder is a 4+ character
 # value. At most 200 distinct runs are masked per input.
+# The runs are found with awk, not grep -E '{256,}': macOS grep refuses a repetition count
+# above 255 ("maximum repetition exceeds 255"), the error went to /dev/null, and on a Mac
+# nothing was masked at all (tests/scan_long_run_test.sh pins both). Splitting each line on
+# the characters that cannot be part of a run gives the same maximal runs in linear time.
 CTX_RUN_MIN=256
 CTX_RUNS=()
 ctx_mask_runs() {
@@ -387,7 +391,7 @@ ctx_mask_runs() {
     CTX_RUNS[i]="$run"
     CTX_TEXT="${CTX_TEXT//"$run"/"~~R${i}~~"}"
     i=$((i + 1))
-  done < <(printf '%s' "$CTX_TEXT" | grep -oE "[A-Za-z0-9_.-]{${CTX_RUN_MIN},}" 2>/dev/null | sort -u | head -n 200)
+  done < <(printf '%s' "$CTX_TEXT" | awk -v min="$CTX_RUN_MIN" -F'[^A-Za-z0-9_.-]+' '{ for (i = 1; i <= NF; i++) if (length($i) >= min) print $i }' | sort -u | head -n 200)
 }
 ctx_unmask_runs() {
   local i
