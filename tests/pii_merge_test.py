@@ -13,9 +13,24 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
-from pii_guard import engine, validators
+from pii_guard import config, engine, validators
 
 failures = []
+
+# The default entity set is structured kinds only (checked below). These cases exercise the
+# merge of Presidio's PERSON/LOCATION with every validator kind, so they ask for all of them.
+DEFAULT_ENTITIES = list(engine.ENTITIES)
+engine.ENTITIES = [
+    "PERSON",
+    "LOCATION",
+    "EMAIL_ADDRESS",
+    "PHONE_NUMBER",
+    "US_SSN",
+    "US_PASSPORT",
+    "CREDIT_CARD",
+    "IBAN_CODE",
+    "IP_ADDRESS",
+]
 
 
 def check(name, cond, detail=""):
@@ -175,6 +190,40 @@ check(
     got == [("PERSON", "Alice Example"), ("LOCATION", "12 Maple Avenue")],
     str(r),
 )
+
+# The shipped default: structured kinds a validator confirms; no address, host or name noise,
+# and nothing for the model to do.
+check(
+    "default entities are the structured kinds",
+    config.DEFAULT_ENTITIES.split(",")
+    == [
+        "EMAIL_ADDRESS",
+        "PHONE_NUMBER",
+        "US_SSN",
+        "US_PASSPORT",
+        "CREDIT_CARD",
+        "IBAN_CODE",
+    ],
+    config.DEFAULT_ENTITIES,
+)
+check(
+    "default leaves out IP_ADDRESS, LOCATION and PERSON",
+    not {"IP_ADDRESS", "LOCATION", "PERSON"} & set(DEFAULT_ENTITIES),
+    str(DEFAULT_ENTITIES),
+)
+saved = engine.ENTITIES
+engine.ENTITIES = DEFAULT_ENTITIES
+r, stub = run(
+    f"host 10.0.0.1 in Springfield, ssh Alice Example a@example.org {ssn}",
+    {"Alice Example": ("PERSON", 0.9), "Springfield": ("LOCATION", 0.9)},
+)
+check(
+    "default: an address, a place and a name raise nothing; an email and an SSN still do",
+    sorted(t for t, _, _ in spans_of(r)) == ["EMAIL_ADDRESS", "US_SSN"],
+    str(spans_of(r)),
+)
+check("default: Presidio is never called", stub.asked is None, str(stub.asked))
+engine.ENTITIES = saved
 
 # PII_ENTITIES narrowing: only the requested validator kinds run
 saved = engine.ENTITIES

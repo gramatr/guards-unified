@@ -65,7 +65,8 @@ jobs:
         run: |
           # Loopback only, random host port (the runner is shared). The token
           # is passed by name so it never appears on a command line.
-          docker run -d --name "$NAME" -e HF_TOKEN -p 127.0.0.1::8700 "$IMAGE"
+          # PERSON is off in the shipped default; this test needs the real name model, so ask for it.
+          docker run -d --name "$NAME" -e HF_TOKEN -e PII_ENTITIES=PERSON,LOCATION,EMAIL_ADDRESS,PHONE_NUMBER,US_SSN,US_PASSPORT,CREDIT_CARD,IBAN_CODE,IP_ADDRESS -p 127.0.0.1::8700 "$IMAGE"
           port="$(docker port "$NAME" 8700/tcp | head -1 | sed 's/.*://')"
           echo "ENDPOINT=http://127.0.0.1:${port}" >> "$GITHUB_ENV"
 

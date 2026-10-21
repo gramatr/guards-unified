@@ -14,16 +14,19 @@ PORT = int(os.environ.get("PII_GUARD_PORT", "8731"))
 # per-language spaCy models, not done here. See README "Language scope."
 LANGUAGE = "en"
 
-# Entity types to look for (comma-separated PII_ENTITIES overrides). The default
-# leaves out US_DRIVER_LICENSE and US_BANK_NUMBER: Presidio's recognizers for them
-# are pattern-only and match any long digit string at a score of 0.01 to 0.05, so
-# run ids, epoch timestamps, PR numbers and similar noise in tool output raised a
-# notice on almost every command. Add them back with PII_ENTITIES if you handle
-# text where those numbers appear with context.
-DEFAULT_ENTITIES = (
-    "PERSON,LOCATION,EMAIL_ADDRESS,PHONE_NUMBER,US_SSN,US_PASSPORT,"
-    "CREDIT_CARD,IBAN_CODE,IP_ADDRESS"
-)
+# Entity types to look for (comma-separated PII_ENTITIES overrides). The default is the
+# structured kinds a deterministic validator can confirm: email, phone, SSN, passport,
+# card, IBAN. It leaves out:
+#   - IP_ADDRESS, LOCATION and PERSON: in operator and infrastructure work an address, a
+#     host or city-like name and a tool or product name are routine output, not personal data
+#     (on one maintainer's transcripts these three were 96% of all notices), and
+#   - US_DRIVER_LICENSE and US_BANK_NUMBER: Presidio's recognizers for them are pattern-only
+#     and match any long digit string at a score of 0.01 to 0.05, so run ids, epoch timestamps
+#     and PR numbers raised a notice on almost every command.
+# With no Presidio kind in the list the model is not asked to analyze anything, which is also
+# faster. Add any of them back with PII_ENTITIES if you handle text where they carry meaning,
+# for example PII_ENTITIES=PERSON,LOCATION,EMAIL_ADDRESS,IP_ADDRESS.
+DEFAULT_ENTITIES = "EMAIL_ADDRESS,PHONE_NUMBER,US_SSN,US_PASSPORT,CREDIT_CARD,IBAN_CODE"
 ENTITIES = [
     e.strip().upper()
     for e in os.environ.get("PII_ENTITIES", DEFAULT_ENTITIES).split(",")
