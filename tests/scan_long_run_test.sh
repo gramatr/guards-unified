@@ -52,6 +52,13 @@ find_big_repeats() {
 big="$(find_big_repeats "$APP"/*.sh)"
 if [ -z "$big" ]; then ok; else bad "grep patterns macOS cannot compile: $big"; fi
 
+# bash 3.2 keeps the quotes of a quoted replacement inside "${x//pat/"rep"}" as literal
+# characters (it wrapped every restored long run in ""): the replacement must be unquoted.
+quoted="$(grep -n -E '\$\{[^}]*//?[^/}]*/"[^}]*"\}' "$APP"/*.sh | grep -v -E '^[^:]*:[0-9]+:[[:space:]]*#')"
+if [ -z "$quoted" ]; then ok; else bad "a quoted replacement in a pattern substitution (wrong on bash 3.2): $quoted"; fi
+qneg="$(printf '%s\n' 'x="${t//"$a"/"b"}"' 'y="${t//"$a"/$b}"' | grep -c -E '\$\{[^}]*//?[^/}]*/"[^}]*"\}')"
+if [ "$qneg" = 1 ]; then ok; else bad "the quoted-replacement check flags only the planted bad form (flagged $qneg of 2)"; fi
+
 # The checker must be able to fail: a planted bad pattern and a planted variable count.
 neg="$(mktemp)"
 trap 'rm -f "$neg"' EXIT
