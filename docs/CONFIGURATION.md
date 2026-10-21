@@ -127,6 +127,8 @@ image and the source, not down to the last package.
 
 ### Refreshing the pins
 
+Dependabot (`.github/dependabot.yml`) opens a weekly PR for the Actions SHAs and for the base-image digests (digest refreshes only, no Python or Go line changes). It cannot read the gitleaks commit or the Go module versions, so those stay manual. The steps below are the manual path and what to check on a Dependabot PR.
+
 Pinning trades freshness for reproducibility: a base-image or action fix now
 arrives only when someone bumps it. The weekly scheduled CVE scan (`ci.yml`)
 still runs against whatever the pins resolve to and raises an issue when a
