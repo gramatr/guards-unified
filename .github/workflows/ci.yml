@@ -51,6 +51,9 @@ jobs:
       - name: scan.sh bash compatibility
         # No bash-4-only syntax in app/*.sh, and the context rules still redact.
         run: bash tests/scan_bash_compat_test.sh
+      - name: scan.sh long unbroken runs (timing)
+        # A 4/8/20 KB run before a key must be redacted fast; no grep pattern may exceed macOS's limit.
+        run: bash tests/scan_long_run_test.sh
       - name: Release evidence script
         # The release page is built from tests/release_evidence.sh; it must refuse a
         # missing changelog section, a failing suite and an active .trivyignore entry.
@@ -67,9 +70,9 @@ jobs:
     # macOS ships bash 3.2. v0.2.9 used a bash 4 expansion in scan.sh, so on a Mac
     # every context rule silently stopped redacting while all of CI, which is
     # Linux with bash 5, stayed green. This runs scan.sh under /bin/bash.
-    # Only the compat test: scan_options_test.sh has a case (a 20,000-character
-    # unbroken run followed by a key) that takes minutes on bash 3.2, a separate
-    # performance problem tracked in gramatr/guards-coordination#71.
+    # Also the long-run timing test and the option tests: scan_options_test.sh has a case (a
+    # 20,000-character unbroken run followed by a key) that did not finish on a Mac because
+    # macOS grep refuses {256,} and the run masking never happened (gramatr/guards-coordination#71).
     runs-on: macos-latest
     timeout-minutes: 10
     steps:
@@ -78,6 +81,12 @@ jobs:
         run: |
           /bin/bash --version | head -1
           SCAN_BASH=/bin/bash /bin/bash tests/scan_bash_compat_test.sh
+      - name: scan.sh long unbroken runs under the system bash (3.2)
+        # macOS grep refuses {256,}; before the fix nothing was masked and a 4 KB run took ~80 s here.
+        run: SCAN_BASH=/bin/bash /bin/bash tests/scan_long_run_test.sh
+      - name: scan.sh option tests under the system bash (3.2)
+        # Skipped until now because its 20 KB-run case did not finish on a Mac (#71).
+        run: /bin/bash tests/scan_options_test.sh
 
   cve-scan-source:
     runs-on: ubuntu-latest
