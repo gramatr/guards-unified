@@ -94,10 +94,14 @@ for n in 4000 8000 20000; do
   fi
 done
 
-# The run itself is kept: the text around the key is unchanged.
-printf '%s\n' "x$(head -c 3000 /dev/zero | tr '\0' 'b')y password: ${SECRET}" > "$W/in" # guards:synthetic
+# The run itself is kept: the text around the key is unchanged. Compared as a bash string, not
+# with a 3,000-character grep pattern, so a grep limit cannot decide the result.
+longb="$(head -c 3000 /dev/zero | tr '\0' 'b')"
+printf '%s\n' "x${longb}y password: ${SECRET}" > "$W/in" # guards:synthetic
 run_capped "$W/in" "$W/out"
-grep -q "^x$(head -c 3000 /dev/zero | tr '\0' 'b')y " "$W/out" && ok || bad "the long run is restored byte for byte after masking"
+got="$(cat "$W/out")"
+want_prefix="x${longb}y "
+if [ "${got#"$want_prefix"}" != "$got" ]; then ok; else bad "the long run is restored byte for byte after masking (output starts: $(printf '%s' "$got" | head -c 60))"; fi
 
 echo "scan-long-run: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
