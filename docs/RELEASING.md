@@ -70,6 +70,14 @@ The tag push in this repo triggers `publish.yml`, which:
    re-run after this job failed part-way updates the existing page instead of
    failing on it.
 
+   The release also carries the standalone patched gitleaks (`gitleaks-patched_*`)
+   built by the `gitleaks-assets` job: linux and darwin, amd64 and arm64, from the
+   same recipe as the image's gitleaks, with build provenance. That job fails unless
+   the binaries hash to `docs/gitleaks-assets.sha256`; the same check runs on every
+   change in CI. When that recipe changes on purpose, regenerate the file
+   (`bash tests/gitleaks_assets.sh build out`, then copy the binary-sha256 lines)
+   and update the copy in claude-plugin-guards in the same release.
+
    The changelog check runs first, in `verify-tag-matches-version`: a tag whose
    version has no `## [X.Y.Z]` section in `CHANGELOG.md` stops the run before any
    image is published. Add the section in the version-bump PR.
