@@ -76,6 +76,46 @@ jobs:
             exit 1
           fi
 
+  gitleaks-assets:
+    # Standalone patched gitleaks binaries for hosts without Docker (issue #55). The
+    # upstream release binary bundles Go modules with known HIGH CVEs; the image carries
+    # a patched build, and this builds the same thing, from the same recipe in
+    # Dockerfile.cpu, for linux and darwin on amd64 and arm64. The plugin's self-heal
+    # downloads one and checks it against binary hashes the plugin carries.
+    #
+    # The build is reproducible, and that is enforced: the binaries' SHA-256 must equal
+    # docs/gitleaks-assets.sha256 or this job fails. Changing the gitleaks recipe means
+    # updating that file (and the copy in claude-plugin-guards) in the same change.
+    # Nothing here publishes; the `release` job attaches the result to the release.
+    if: github.event_name == 'push'
+    needs: verify-tag-matches-version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write       # Sigstore keyless signing of the provenance
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build the four binaries and package them
+        run: bash tests/gitleaks_assets.sh build assets
+
+      - name: The binaries are the ones recorded in docs/gitleaks-assets.sha256
+        run: bash tests/gitleaks_assets.sh check assets
+
+      - name: Attest build provenance for the packaged assets
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: assets/*.tar.gz
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: gitleaks-assets
+          path: assets/
+          if-no-files-found: error
+
   build-amd64:
     if: github.event_name == 'push'
     needs: verify-tag-matches-version
@@ -279,7 +319,7 @@ jobs:
     # published CPU image) and the changelog text for this version.
     # `contents: write` is held by this job only; the build and merge jobs do not have it.
     if: github.event_name == 'push'
-    needs: [merge-multiarch]
+    needs: [merge-multiarch, gitleaks-assets]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -327,6 +367,7 @@ jobs:
         run: |
           gh run download "${{ github.run_id }}" -n sbom-cpu.spdx.json -D release-assets
           gh run download "${{ github.run_id }}" -n sbom-gpu.spdx.json -D release-assets
+          gh run download "${{ github.run_id }}" -n gitleaks-assets -D release-assets
 
       - name: Create the release page
         env:
@@ -348,11 +389,12 @@ jobs:
             printf '\n### Attached evidence\n\n'
             printf -- '- `trivy-cpu.json`, `trivy-gpu.json`: full Trivy image scans, all severities, no ignore file.\n'
             printf -- '- `sbom-cpu.spdx.json`, `sbom-gpu.spdx.json`: SPDX SBOMs.\n'
+            printf -- '- `gitleaks-patched_*`: standalone patched gitleaks for hosts without Docker (linux and darwin, amd64 and arm64), their checksums and binary hashes, with build provenance. `gh attestation verify <file> --repo gramatr/guards-unified` checks one.\n'
             printf -- '- `test-counts.txt`: suite results for this commit:\n\n```\n'
             cat release-assets/test-counts.txt
             printf '```\n'
           } > release-body.md
-          assets=(release-assets/trivy-cpu.json release-assets/trivy-gpu.json release-assets/sbom-cpu.spdx.json release-assets/sbom-gpu.spdx.json release-assets/test-counts.txt)
+          assets=(release-assets/trivy-cpu.json release-assets/trivy-gpu.json release-assets/sbom-cpu.spdx.json release-assets/sbom-gpu.spdx.json release-assets/test-counts.txt release-assets/gitleaks-patched_*)
           if gh release view "$TAG" > /dev/null 2>&1; then
             # A re-run after this step failed part-way: update the page, do not fail on it.
             gh release upload "$TAG" "${assets[@]}" --clobber

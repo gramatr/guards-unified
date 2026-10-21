@@ -34,9 +34,19 @@ RUN git init -q /src && cd /src \
     && git fetch -q --depth 1 origin "${GITLEAKS_COMMIT}" \
     && git checkout -q --detach FETCH_HEAD
 WORKDIR /src
+# GOOS/GOARCH are unset for the image build (Go then builds for this machine). The release
+# workflow sets them to build the standalone binaries it attaches for hosts without Docker
+# (issue #55); the recipe below is the same one that builds the image's binary.
+ARG GOOS
+ARG GOARCH
 RUN go get github.com/klauspost/compress@v1.18.7 golang.org/x/crypto@v0.55.0 golang.org/x/text@v0.41.0 \
     && go mod tidy \
     && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X github.com/zricethezav/gitleaks/v8/version.Version=${GITLEAKS_VERSION}" -o /usr/bin/gitleaks .
+
+# Export-only stage: just the binary, for `docker build --target gitleaks-bin --output ...`
+# (the release workflow's standalone gitleaks assets, issue #55). Not part of the image.
+FROM scratch AS gitleaks-bin
+COPY --from=gitleaks /usr/bin/gitleaks /gitleaks
 
 FROM python:3.12-slim@sha256:cb33f7f771ecec2ef1225cf39b159591a040391bd73e4c01f00fdfc4c47611d2
 COPY --from=gitleaks /usr/bin/gitleaks /usr/bin/gitleaks

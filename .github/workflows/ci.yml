@@ -55,6 +55,10 @@ jobs:
         # The release page is built from tests/release_evidence.sh; it must refuse a
         # missing changelog section, a failing suite and an active .trivyignore entry.
         run: bash tests/release_evidence_test.sh
+      - name: Gitleaks assets script
+        # The check mode of tests/gitleaks_assets.sh must refuse a differing hash, a missing
+        # target and a missing build; the build itself runs in the gitleaks-assets job.
+        run: bash tests/gitleaks_assets_test.sh
 
   scan-macos:
     # macOS ships bash 3.2. v0.2.9 used a bash 4 expansion in scan.sh, so on a Mac
@@ -129,6 +133,19 @@ jobs:
           assert c['findings'][0]['verdict'] == 'clean' and c['redacted_text'] == 'nothing to see here', c
           print('secret-only endpoint ok')
           "
+
+  gitleaks-assets:
+    # The standalone patched gitleaks binaries (issue #55) are built from the same recipe as
+    # the image's gitleaks and must hash to docs/gitleaks-assets.sha256. Running this on every
+    # change proves the build is reproducible on GitHub's runners before a release depends on it.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build the four binaries
+        run: bash tests/gitleaks_assets.sh build assets
+      - name: Hashes equal docs/gitleaks-assets.sha256
+        run: bash tests/gitleaks_assets.sh check assets
 
   flag-scheduled-failure:
     needs: [lint, cve-scan-source, cve-scan-image, redaction-selftest]
