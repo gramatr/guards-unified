@@ -278,6 +278,17 @@ def main() -> int:
     for cname, text in last_segment_secrets.items():
         check(cname, text, [sv], required=True)
 
+    # The route-string exemption (coordination#99) covers a credential word that is a path segment followed
+    # by a colon, and nothing else: an equals sign after the segment, and a key that is not a path segment,
+    # still redact.
+    route_still_secrets = {
+        "route/equals-still-redacts": f"curl https://h.example.invalid/v1/secret={sv}",  # guards:synthetic
+        "route/key-after-slash-word": f"path=/v1/x password: {sv}",  # guards:synthetic
+        "route/plain-colon-key": f"secret: {sv}",  # guards:synthetic
+    }
+    for cname, text in route_still_secrets.items():
+        check(cname, text, [sv], required=True)
+
     # A credential inside a very long line is still found. Long unbroken runs are
     # masked for the context rules (they used to make the scan quadratic), so these
     # pin that the mask never hides a credential, whether it sits after a run, before one, between two,
@@ -388,6 +399,12 @@ def main() -> int:
         "benign/mysql-prompt": "mysql -u root -p appdb",
         "benign/access-key-id-default": "AccessKey : 48388a15798489a302330828b2388025",
         "benign/begin-prose": "hello -----BEGIN of a story\nline2\n",
+        # A route string whose last segment is a credential word is a path, not a key: the colon after it is
+        # an API custom-method suffix or prose punctuation (coordination#99, found in the publish guard).
+        "benign/route-custom-method": "curl -X POST https://api.example.invalid/v1/secret:rotate",  # guards:synthetic
+        "benign/route-colon-prose": "GET /api/v1/secret: returns the stored value",  # guards:synthetic
+        "benign/route-token-colon": "POST /oauth2/token: issues a short lived bearer",  # guards:synthetic
+        "benign/route-in-quotes": 'call "/internal/v2/password: reset flow" before retry',  # guards:synthetic
     }
     benign.update({
         "benign/wrapped-key-prose": 'the "password:" field, then "some text here"',
