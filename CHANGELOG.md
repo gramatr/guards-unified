@@ -36,7 +36,15 @@ What was hardened, what was loosened and why is in
 
 ### guards-unified
 
+- Added: `docs/VERIFY.md`, a verify-it-yourself page with commands run against v0.2.10 (provenance, SBOM, digest, the standalone gitleaks files, the scan), what each proves and does not, and how to run a digest-pinned container. `docs/TRADEOFFS.md` records the default (floating tag, automatic updates) with its cost, and `docs/THREAT-MODEL.md` T13 is brought up to date (#61).
+- Added: `tests/repro_archive_name_miss.sh` and `docs/security/archive-name-miss-reproduction-2026-10-22.md`, so anyone can reproduce the scanner miss in v0.2.9 and earlier and check that v0.2.10 does not have it.
+- Changed: both CVE gates in CI now fail on fixable MEDIUM findings as well as CRITICAL and HIGH, with unfixed findings still ignored and `.trivyignore` still empty (#63). The macOS option tests take a time-budget factor so a slow shared runner does not fail them (#62).
 - Added: the release page now says that `gh attestation verify` prints nothing outside a terminal (check the exit code, or use `--format json`, with a command that prints the verified digest and the building workflow), and has a section on what the image scans still report: each HIGH or CRITICAL advisory once with its fix status and a reviewed one-sentence assessment from `docs/known-unfixed-notes.tsv`, or "not yet assessed". The page body is built by `tests/release_body.sh`, which has a test.
+
+### claude-plugin-guards
+
+- Added: `GUARDS_PII_IGNORE_ENTITIES` (launch environment only) filters the PII types a note names, and a PII type is now named once per session (`GUARDS_PII_NOTE_ONCE=0` restores a note on every command; `GUARDS_STATE_DIR` holds the per-session state, type names only). Secret redaction is untouched (#132).
+- Added: `docs/DATA-FLOW.md`, what the guards read, send, keep and download, with what was and was not checked (#129); the server PII settings and how to set them, with a recorded run, in `docs/CONFIGURATION.md` (#131); the decision not to build a file-write guard for now, with a replay of 1,500 real writes, in `docs/TRADEOFFS.md` and `docs/LIMITS.md` (#130).
 
 ## [0.2.10] - 2026-10-21
 
