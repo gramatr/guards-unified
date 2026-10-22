@@ -41,8 +41,7 @@ def load_rows(paths):
     for p in paths:
         data = json.loads(Path(p).read_text())
         for result in data.get("Results") or []:
-            for v in result.get("Vulnerabilities") or []:
-                rows.append(v)
+            rows.extend(result.get("Vulnerabilities") or [])
     return rows
 
 
@@ -110,9 +109,11 @@ def main(argv):
             )
         out += [
             "",
-            "Assessments are read from the advisory text and the container's setup (one non-root "
-            "process, loopback only in the plugin's compose file). They were not tested "
-            "against the image.",
+            (
+                "Assessments are read from the advisory text and the container's setup (one "
+                "non-root process, loopback only in the plugin's compose file). They were not "
+                "tested against the image."
+            ),
             "",
         ]
     else:
