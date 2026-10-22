@@ -22,7 +22,7 @@ are not patched.
 
 ## Past advisories
 
-- [GHSA-5g92-g3j3-2g22](https://github.com/gramatr/guards-unified/security/advisories/GHSA-5g92-g3j3-2g22) (published 2026-10-22): in v0.2.9 and every earlier release, about 1 scan in 125 could return a vendor-shaped token unredacted, with no error. Fixed in v0.2.10. The same flaw in the plugin's copy of the scanner is [GHSA-h5rq-hrxc-f3vm](https://github.com/gramatr/claude-plugin-guards/security/advisories/GHSA-h5rq-hrxc-f3vm).
+- [GHSA-5g92-g3j3-2g22](https://github.com/gramatr/guards-unified/security/advisories/GHSA-5g92-g3j3-2g22) (published 2026-10-22): in v0.2.9 and every earlier release, about 1 scan in 155 could return a vendor-shaped token unredacted, with no error. Fixed in v0.2.10. The same flaw in the plugin's copy of the scanner is [GHSA-h5rq-hrxc-f3vm](https://github.com/gramatr/claude-plugin-guards/security/advisories/GHSA-h5rq-hrxc-f3vm).
 
 ## What to send
 
