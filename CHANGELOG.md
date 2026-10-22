@@ -44,6 +44,7 @@ What was hardened, what was loosened and why is in
 - Added: a release can be rehearsed end to end on a scratch tag from any branch without touching what users pull (#54).
 - Security: base images are pinned by digest, gitleaks by commit and Actions by SHA (#46), with Dependabot for the SHAs and digests (#47, #48).
 - Changed: `LICENSE` is the plain MIT text; the Llama notice moved to `NOTICE` (#52).
+- Security: the full Trivy scan on the release rehearsal showed 10 findings with a published fix that the CI gate (CRITICAL and HIGH only) never looked at. The gitleaks build now also bumps `golang.org/x/crypto` to v0.56.0, `ulikunitz/xz` to v0.5.15, `nwaples/rardecode/v2` to v2.2.0 and `mholt/archives` to v0.1.5 (rardecode 2.2.0 does not compile against the archives version gitleaks 8.30.1 ships), and the image removes the base image's `pip` 25.0.1, which carried six CVEs and which the service never calls (upgrading it instead would pull in bundled copies with three HIGH findings). The standalone gitleaks hashes in `docs/gitleaks-assets.sha256` changed accordingly. What remains in the scan is what nobody can patch yet: 44 HIGH rows (8 flaws) and MEDIUM and LOW rows in Debian 13.7 system packages, and one UNKNOWN `x/crypto` advisory with no fixed version.
 
 ### claude-plugin-guards
 
