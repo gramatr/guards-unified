@@ -135,15 +135,20 @@ Each row: the control that exists, its documented limit, and the evidence.
   match cap, a 15 s scan budget,
   size caps on the server (413 over 64 KiB on `/v1/scan`, 1 MiB on
   `/v1/scan/secret`), and a hook-side cap with a visible warning when a stream
-  is truncated.
-- **Limit.** **A scan that times out fails open**: the text is returned
+  is truncated. One very long line with many credential words is cut into
+  pieces for the context rules only (a 20 KB line took 17 s before and about
+  1 s now); the private-key pass, gitleaks and the vendor shapes see the whole
+  line.
+- **Limit.** A context-rule credential whose quoted value contains
+  spaces and straddles a cut is not found by those rules.
+  **A scan that times out fails open**: the text is returned
   unscanned with verdict `error` and `SECRET_SCAN_TIMEOUT`. This was a deliberate
   decision (withholding was tried and dropped). Thousands of matches are slow.
   The body is read before its size is checked. A hook that outlives its own
   deadline withholds the output instead of passing it (B1).
 - **Evidence.** Code: `subprocess.run(... timeout=15)` and the timeout branch of
   `_scan_secrets`; `_enforce_size`. Pinned by: `tests/api_contract_test.py` (413
-  caps), the timing cases in `tests/scan_options_test.sh`, plugin
+  caps), the timing cases in `tests/scan_options_test.sh`, `tests/scan_long_line_test.sh`, plugin
   `tests/combined-hook.test.sh` (a slow model stub cannot delay secret
   redaction).
 

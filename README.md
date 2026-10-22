@@ -180,6 +180,8 @@ per-request parameter.
 | `SECRET_GUARD_SKIP_GITLEAKS` | off | `1` runs only the deterministic passes (private key, context rules, base64, and env values if enabled) and skips gitleaks. For callers that already got gitleaks' answer from `/v1/scan/secret`. |
 | `SECRET_GUARD_REDACT_KEY_IDS` | off | `1` also redacts access-key and client IDs. Off because an ID is a semi-public identifier and the secret half is the enforced boundary. |
 | `SECRET_GUARD_ENV_VALUES` | off | `1` exact-match redacts the values of environment variables whose names look secret (`*TOKEN*`, `*PASSWORD*`, `*SECRET*`, `PW`, ...; names ending `_FILE`, `_PATH`, `_DIR`, `_URL`, `_URI`, `_NAME`, `_ID`, `_TYPE`, `_HOST`, `_PORT`, `_USER` are skipped, as are values under 8 characters, placeholders, existing paths, `PWD` and `OLDPWD`). Only meaningful where the scanner shares the session's environment, such as a Claude Code plugin's local hooks. In this service it would match the container's own environment, so leave it off. |
+| `SECRET_GUARD_CTX_LINE_MAX` | 2048 | A line longer than this many bytes with at least `SECRET_GUARD_CTX_LINE_HITS` credential words is cut into pieces for the context rules only (the private-key pass, gitleaks and the vendor shapes see the whole line). `0` turns it off. |
+| `SECRET_GUARD_CTX_LINE_HITS` | 150 | The credential-word count from which a long line is cut. |
 
 Plugin-side settings such as `FLAG_MAX_BYTES` and `FLAG_BUDGET` (how much of
 a tool output is sent for the PII and injection notices, and how long to wait
