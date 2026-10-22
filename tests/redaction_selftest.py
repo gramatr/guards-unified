@@ -304,6 +304,17 @@ def main() -> int:
     for cname, (text, material) in long_line_secrets.items():
         check(cname, text, material, required=True)
 
+    # One long line dense with credential words is cut into pieces for the context rules (coordination#48);
+    # a credential inside it, in the middle and at the end, is still found and redacted.
+    dense_unit = "a.token=b;c.secret:d," + "password" + '_hint="ok";'  # guards:synthetic
+    dense = (dense_unit * 300)[:12000]
+    dense_line_secrets = {
+        "long-line/dense-middle": (f"{dense}DB_PASSWORD={sv} {dense}", [sv]),  # guards:synthetic
+        "long-line/dense-end": (f"{dense}{dense}api_secret={sv}", [sv]),  # guards:synthetic
+    }
+    for cname, (text, material) in dense_line_secrets.items():
+        check(cname, text, material, required=True)
+
     # Unquoted values in env, INI, YAML and shell contexts, and string literals
     # assigned to a token-named constant, stay secrets even though the code-shape
     # rule exists. Short, lowercase and digit-bearing words are included on purpose.

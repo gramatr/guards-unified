@@ -54,6 +54,9 @@ jobs:
       - name: scan.sh long unbroken runs (timing)
         # A 4/8/20 KB run before a key must be redacted fast; no grep pattern may exceed macOS's limit.
         run: bash tests/scan_long_run_test.sh
+      - name: scan.sh one long line full of credential words (timing)
+        # A 40 KB dense line used to take minutes; a credential inside it must still be redacted (#48).
+        run: bash tests/scan_long_line_test.sh
       - name: Release evidence script
         # The release page is built from tests/release_evidence.sh; it must refuse a
         # missing changelog section, a failing suite and an active .trivyignore entry.
@@ -89,6 +92,8 @@ jobs:
       - name: scan.sh long unbroken runs under the system bash (3.2)
         # macOS grep refuses {256,}; before the fix nothing was masked and a 4 KB run took ~80 s here.
         run: SCAN_BASH=/bin/bash /bin/bash tests/scan_long_run_test.sh
+      - name: scan.sh one long line full of credential words under the system bash (3.2)
+        run: SCAN_BASH=/bin/bash /bin/bash tests/scan_long_line_test.sh
       - name: scan.sh option tests under the system bash (3.2)
         # Skipped until now because its 20 KB-run case did not finish on a Mac (#71).
         env:

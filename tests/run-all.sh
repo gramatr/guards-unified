@@ -56,6 +56,7 @@ echo "build inputs"
 step "dockerfile_pins_test" bash tests/dockerfile_pins_test.sh
 step "scan_bash_compat_test" bash tests/scan_bash_compat_test.sh
 step "scan_long_run_test" bash tests/scan_long_run_test.sh
+step "scan_long_line_test" bash tests/scan_long_line_test.sh
 step "release_evidence_test" bash tests/release_evidence_test.sh
 step "gitleaks_assets_test" bash tests/gitleaks_assets_test.sh
 step "license_test" bash tests/license_test.sh

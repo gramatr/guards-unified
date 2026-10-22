@@ -226,6 +226,21 @@ never flagged for PII or injection). The server itself has no such cap.
   context rules and restored afterwards, and a secret next to or inside one is
   still redacted (required self-test cases; `tests/scan_long_run_test.sh` also
   caps the time).
+- **One very long line full of credential words no longer stalls the context
+  pass.** The context rules re-scan the rest of the text for every match, so a
+  single line with many credential words cost time that grew with its length times
+  its hits (a 20 KB line took 17 s and 40 KB did not finish in 2 minutes, measured
+  on an idle host on 2026-10-22). A line longer than 2,048 bytes with at least 150
+  credential words is now cut into pieces of about 1 KB for the context rules only,
+  at a space or a punctuation mark and never right after a `:` or `=`, and put back
+  afterwards (`SECRET_GUARD_CTX_LINE_MAX=0` turns it off; `SECRET_GUARD_CTX_LINE_HITS`
+  sets the 150). The same 20 KB line takes about 1 s and 40 KB about 2 s. A long line
+  with few credential words is left whole, because cutting it costs more than it
+  saves. The private-key pass, gitleaks and the vendor shapes still see the whole
+  line. **Known limit:** a context-rule credential whose quoted value contains spaces
+  and straddles a cut is not found by those rules (a plain `key=value` is never cut
+  inside). `tests/scan_long_line_test.sh` pins a credential inside a 40 KB dense line
+  and the time.
 - **No gitleaks or `jq`**: the deterministic passes still run; gitleaks'
   vendor-format coverage is lost, with a log line.
 - **A secret `error` leaves secrets in `/v1/scan`'s `redacted_text`** (the
