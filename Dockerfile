@@ -48,7 +48,9 @@ ARG GITLEAKS_VERSION=v8.30.1
 ARG GITLEAKS_COMMIT=83d9cd684c87d95d656c1458ef04895a7f1cbd8e
 # Built from the release tag with fixed Go modules instead of copying the
 # official image's binary: v8.30.1 is the latest release but bundles
-# klauspost/compress, x/crypto, x/text and a Go stdlib with known HIGH CVEs.
+# klauspost/compress, x/crypto, x/text and a Go stdlib with known HIGH CVEs. The
+# xz and rardecode bumps and x/crypto v0.56.0 clear the MEDIUM findings Trivy reported
+# on the v0.2.10 rehearsal image.
 # Drop the `go get` once gitleaks ships a release that carries the fixes.
 RUN git init -q /src && cd /src \
     && git remote add origin https://github.com/gitleaks/gitleaks.git \
@@ -60,7 +62,8 @@ WORKDIR /src
 # (issue #55); the recipe below is the same one that builds the image's binary.
 ARG GOOS
 ARG GOARCH
-RUN go get github.com/klauspost/compress@v1.18.7 golang.org/x/crypto@v0.55.0 golang.org/x/text@v0.41.0 \
+RUN go get github.com/klauspost/compress@v1.18.7 golang.org/x/crypto@v0.56.0 golang.org/x/text@v0.41.0 \
+       github.com/ulikunitz/xz@v0.5.15 github.com/nwaples/rardecode/v2@v2.2.0 github.com/mholt/archives@v0.1.5 \
     && go mod tidy \
     && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X github.com/zricethezav/gitleaks/v8/version.Version=${GITLEAKS_VERSION}" -o /usr/bin/gitleaks .
 
@@ -75,6 +78,12 @@ COPY --from=gitleaks /usr/bin/gitleaks /usr/bin/gitleaks
 # (CVE-2026-84782 in libssl3t64, found the same way).
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends jq bash \
     && rm -rf /var/lib/apt/lists/*
+
+# Remove the base image's own pip. It is 25.0.1 with six published CVEs, and upgrading it is no fix:
+# pip 26.2 bundles urllib3, setuptools and msgpack copies that Trivy reports (3 HIGH) and that
+# cannot be updated separately. The service installs with uv into /app/.venv and never calls
+# this pip (found by the v0.2.10 rehearsal scan).
+RUN python -m pip uninstall -y pip
 
 # Pinned by tag and digest; bump both together (docs/CONFIGURATION.md, Supply chain).
 COPY --from=ghcr.io/astral-sh/uv:0.13.3@sha256:bee0a2a458fd956c5df7b8b4c5fed2257b0af34866e3da7b51db0be3acb375d1 /uv /uvx /usr/local/bin/
