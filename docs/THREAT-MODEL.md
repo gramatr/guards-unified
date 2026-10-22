@@ -390,6 +390,25 @@ Stated plainly, so nobody relies on a guarantee that does not exist.
   open by design. (A hook that outlives its own deadline does not: it denies or
   withholds, see B1.) Secrets still get a local scan when the
   service is down; PII and injection notices simply disappear.
+- **In `bypassPermissions` the agent can write where the guards live.** Claude
+  Code's permission-modes page says that mode "disables permission prompts and
+  safety checks so tool calls execute immediately, including writes to protected
+  paths", and its per-mode table marks a protected-path write as Allowed there
+  (Prompted in `default` and `acceptEdits`, Denied in `dontAsk`). The protected
+  directories include `.claude`. So in that mode disabling the guards, by editing
+  the installed hooks or the settings that register them, is one write away, and
+  no override or grant store in this project changes that. Not documented, so
+  unverified: whether the installed plugin's own directory under `~/.claude` is
+  covered by the `.claude` entry (read literally it would be), and whether an
+  agent in that mode may write a settings file that sets `disableAllHooks`. What
+  an organisation can do: managed settings `allowManagedHooksOnly` blocks user,
+  project, local and plugin hooks, but "hooks from plugins force-enabled in
+  managed settings `enabledPlugins` are exempt", and a `disableAllHooks` set below
+  the managed level cannot disable managed hooks (Claude Code's hooks and
+  plugins/org pages; read 2026-10-22). Whether the managed settings file itself is
+  protected from the agent is not documented; the managed-settings page says an
+  administrator on the machine can edit it. Do not run a session you rely on
+  these guards for in `bypassPermissions` without that managed setup.
 - **An attacker who controls the machine, the container runtime, the user's
   account or the hook environment**, including anyone who can set the override
   variables (`GUARDS_ALLOW_CRED_READ`, `GUARDS_ALLOW_PUBLISH_SECRETS`,
