@@ -101,8 +101,10 @@ characters and fullwidth `=` and `:` are normalised across the whole output
 
 ## PII
 
-- **English only**, with 9 entity types by default, from two sources:
-  - Presidio (a spaCy model, statistical): `PERSON` and `LOCATION`. A `PERSON`
+- **English only**, with 6 entity types by default (email, phone, SSN, passport,
+  card, IBAN). `IP_ADDRESS`, `PERSON` and `LOCATION` are off unless `PII_ENTITIES`
+  adds them. The sources:
+  - Presidio (a spaCy model, statistical; off by default): `PERSON` and `LOCATION`. A `PERSON`
     span containing a digit, underscore, slash, `=`, `@` or `:` is treated as an
     identifier and dropped.
   - Deterministic checks in `app/pii_guard/validators.py` (since the release
@@ -115,13 +117,13 @@ characters and fullwidth `=` and `:` are normalised across the whole output
     digits, or a letter and eight, only straight after the word "passport"),
     `PHONE_NUMBER` (North American numbers with parentheses or separators, `+`
     international numbers with separators, compact `+E.164` away from the start of
-    a line), `IP_ADDRESS` (IPv4), `EMAIL_ADDRESS`.
+    a line), `IP_ADDRESS` (IPv4; off by default), `EMAIL_ADDRESS`.
   - Not reported, on purpose: loopback (`127.0.0.0/8`) and `0.0.0.0`, the
     broadcast address and netmasks; `noreply@`, `no-reply@` and `donotreply@`
     senders; the `git` user of an ssh remote (`git@github.com:org/repo.git`);
-    `name@2x.png` asset names. Still reported: private-range IPv4 addresses
-    (an internal host address is what a leak looks like) and other role
-    mailboxes such as `security@` and `support@`.
+    `name@2x.png` asset names. Still reported: private-range IPv4 addresses when
+    `IP_ADDRESS` is enabled (an internal host address is what a leak looks like),
+    and other role mailboxes such as `security@` and `support@`.
   - Known misses: phone numbers written as bare digits or in national formats
     outside North America (`020 7946 0958`); IPv6; a card number with an unusual
     issuer prefix, or written unseparated with a stray prefix; an IBAN written in
@@ -217,9 +219,12 @@ never flagged for PII or injection). The server itself has no such cap.
 - **Fails open on timeout.** A secret scan that takes more than 15 s returns the
   text unscanned, verdict `error` with `SECRET_SCAN_TIMEOUT`. This is deliberate
   (withholding the output was tried and dropped) and it means an adversary, or
-  just a huge input, can push text past the scanner. Thousands of matches are
-  slow even below the limit (100 KB of JSON with 5000 secrets took about 12 s
-  in one measurement).
+  just a huge input, can push text past the scanner. Many separate matches are
+  slow even below the limit: the time grows faster than linearly with the number
+  of separate matches (in a test on a busy host on 2026-10-22, 2,000 secret lines,
+  about 86 KB, took longer than the 15 s limit). Earlier figures for this were
+  removed because they could not be reproduced; they will be re-measured on an
+  idle host.
 - **Very long unbroken runs no longer stall the scan.** A base64 blob, a hash or
   a bundle without spaces used to make the context pass quadratic (a 20 KB run
   took about 10 s). Runs of 256 or more name characters are now masked for the
