@@ -2,7 +2,7 @@
 
 Covers both packages of the guards line, `guards-unified` (the server image,
 this repository) and [`claude-plugin-guards`](https://github.com/gramatr/claude-plugin-guards)
-(the Claude Code plugin), from the first tagged release to v0.2.11.
+(the Claude Code plugin), from the first tagged release to v0.2.12.
 
 ## How the versions work
 
@@ -31,6 +31,20 @@ What was hardened, what was loosened and why is in
 [docs/LIMITS.md](docs/LIMITS.md).
 
 ---
+
+## [0.2.12] - 2026-10-22
+
+### guards-unified
+
+- Fixed: one very long line with many credential words no longer stalls the context pass. A 20 KB line took 17 s and a 40 KB line did not finish, so a diff holding a minified bundle was denied by the publish guard as "did not finish in time". A line over 2 KB with 150 or more credential words is now cut into pieces of about 1 KB for the context rules only; the private-key pass, gitleaks and the vendor shapes still see the whole line. A 20 KB line takes about 1 s, 40 KB about 2 s. Known limit: a context-rule credential whose quoted value contains spaces and straddles a cut is not found by those rules. `SECRET_GUARD_CTX_LINE_MAX=0` turns it off. The self-test grew from 181 to 183 cases (#73, coordination #48).
+- Changed: the threat model records that `bypassPermissions` lets the agent write where the guards live, with what Claude Code's documentation says and what it does not (#72, coordination #88).
+
+### claude-plugin-guards
+
+- Fixed: a document that only names a private-key header in a sentence can be read; a file is a key only when a header starts or ends its line, sits in JSON with escaped newlines, or comes with a base64 body. `GUARDS_CRED_SNIFF_STRICT=1` restores the old rule (#144, coordination #86).
+- Changed: every deny, ask and withhold message carries a `Fix:` clause with the exact thing to do. A withhold notice now says the command ran and only its output was withheld, so it does not read as a failure. `docs/AGENTS-GUIDE.md` and `guards_status` give a table of message prefixes that tells a guards message from another hook's (#143, coordination #100).
+- Fixed: the plugin's scan image patches the same six gitleaks Go modules as the server image, and a CI check fails if the two lists differ (#141, coordination #118).
+- Changed: docs for organisations (managed hooks for `bypassPermissions`), the Hugging Face token prerequisite (a missing token also costs PII detection), and the vendored `scan.sh` synced with the server (#142, #140, #145).
 
 ## [0.2.11] - 2026-10-22
 
