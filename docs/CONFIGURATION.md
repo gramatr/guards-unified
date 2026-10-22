@@ -3,7 +3,7 @@
 Everything the server can be configured with, what it defaults to, and who
 reads it. All of it is process environment of the container (`docker run -e
 NAME=value` or an env file); there are no per-request parameters and no config
-file. Defaults below are read from the code at v0.2.3.
+file. These are the defaults of the release in `VERSION`.
 
 "Owner" says which part of the image reads the variable:
 

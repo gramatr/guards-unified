@@ -7,7 +7,7 @@ written to be checked: every threat names the control, the documented limit and
 where the evidence lives (code, or a test that pins it). It restates and
 organises [LIMITS.md](LIMITS.md), [TRADEOFFS.md](TRADEOFFS.md) and
 [CONFIGURATION.md](CONFIGURATION.md); where they disagree with this page,
-they are the detail and this page should be corrected. Written against 0.2.4.
+they are the detail and this page should be corrected. Last reviewed: 2026-10-22.
 
 The posture in one paragraph: **secrets are the one hard rule** (deterministic,
 fast, biased toward over-redaction, fails closed when it knows a secret
@@ -49,10 +49,11 @@ controls Claude Code or the container runtime, or who controls the machine.
 ```
  Claude Code session (the user's environment)
  ┌────────────────────────────────────────────────────────────┐
- │  tool call ──► PreToolUse hooks (credfile, publish, message)│  B1
+ │  tool call ──► PreToolUse hooks (credfile, publish,        │  B1
+ │                 outbound, message)                         │
  │  tool output ◄─ PostToolUse hooks (Bash, MCP) ◄────────────┐│
  │  user prompt ──► UserPromptSubmit hook (note only)         ││
- │  plugin MCP server (one tool: scan) ───────────────────────┤│  B2
+ │  plugin MCP server (7 tools, 3 prompts, 4 resources) ──────┤│  B2
  └──────────────┬─────────────────────────────────────────────┘│
                 │ HTTP, plaintext, no auth        B3           │
                 ▼                                              │
@@ -64,12 +65,21 @@ controls Claude Code or the container runtime, or who controls the machine.
 - **B1, hook to plugin scanner.** Hooks are shell scripts run by Claude Code
   with the user's privileges. They read the hook payload, scan it, and answer
   with allow, ask, deny or a rewritten output. The payload shapes are Claude
-  Code's; the plugin only rewrites shapes it recognises. A hook that crashes or
-  times out is assumed to leave the original text in place (Claude Code's
-  behaviour, not verified here).
+  Code's; the plugin only rewrites shapes it recognises. Claude Code lets a hook
+  that outlives its `timeout` fail open (the plugin's `docs/HOOKS.md` records an
+  experiment on Claude Code 2.1.304; not repeated here), so each hook enforces its
+  own deadline, 6 to 25 s and at most 70 percent of its `hooks.json` timeout. At
+  expiry or on a crash the PreToolUse guards deny, the Bash and MCP output hooks
+  withhold the output, and the advisory prompt hook adds no note.
 - **B2, plugin MCP server.** A local stdio process (`mcp/server.py`) exposing
-  one tool, `scan`, that forwards text to the service. It is a client of B3, and
-  its result is itself scanned by the MCP output hook.
+  seven tools (`scan`, `check_before_publish`, `explain_block`,
+  `prepare_publication`, `guards_status`, `mark_synthetic`,
+  `report_false_positive`), three prompts and four resources. The scanning tools
+  forward text to the service and are clients of B3, and their results are
+  themselves scanned by the MCP output hook. Some tools write files:
+  `mark_synthetic` adds the `guards:synthetic` marker to lines of a file in the
+  current git repository (it refuses a line that looks like a real credential),
+  and others write under the plugin's state directory.
 - **B3, service on loopback.** The hooks call the HTTP service
   (`POST /v1/scan`, `POST /v1/scan/secret`). The service has no
   authentication, no TLS and no rate limit. Its only protection is that the
@@ -101,8 +111,8 @@ Each row: the control that exists, its documented limit, and the evidence.
 - **Evidence.** Code: `app/scan.sh`, `_scan_secrets` in `app/main.py`;
   `hooks/combined-hook.sh`, `hooks/mcp-output-guard.sh`,
   `hooks/secret-scan-lib.sh`. Pinned by: `tests/redaction_selftest.py` and
-  `tests/scan_options_test.sh` (required cases redacted, 23 lookalikes
-  unchanged), plugin `tests/combined-hook.test.sh`,
+  `tests/scan_options_test.sh` (required cases redacted, the harmless
+  lookalikes unchanged), plugin `tests/combined-hook.test.sh`,
   `tests/mcp-output-guard.test.sh`, `tests/scan-redaction.test.sh`.
 
 ### T2. The scanner finds a secret but does not remove it
@@ -129,8 +139,8 @@ Each row: the control that exists, its documented limit, and the evidence.
 - **Limit.** **A scan that times out fails open**: the text is returned
   unscanned with verdict `error` and `SECRET_SCAN_TIMEOUT`. This was a deliberate
   decision (withholding was tried and dropped). Thousands of matches are slow.
-  The body is read before its size is checked. If a hook is killed at its own
-  timeout, the original text is assumed to stand.
+  The body is read before its size is checked. A hook that outlives its own
+  deadline withholds the output instead of passing it (B1).
 - **Evidence.** Code: `subprocess.run(... timeout=15)` and the timeout branch of
   `_scan_secrets`; `_enforce_size`. Pinned by: `tests/api_contract_test.py` (413
   caps), the timing cases in `tests/scan_options_test.sh`, plugin
@@ -141,7 +151,7 @@ Each row: the control that exists, its documented limit, and the evidence.
 
 - **Control.** A `PreToolUse` hook on Read, Grep and Bash denies known
   credential files (SSH keys, cloud credential files, `.netrc`, `.pgpass`,
-  keystores, any file whose content starts like a private key) and asks for
+  keystores, any file that contains a private-key header) and asks for
   files that are usually benign (`.env`, kubeconfig, registry token files,
   Terraform state). The hook never prints content.
 - **Limit.** Indirect reads (a script, a path held in a variable, `eval`) are
@@ -160,9 +170,10 @@ Each row: the control that exists, its documented limit, and the evidence.
   `git commit`). A match from a vendor or private-key rule is a hard deny. A match
   from a context rule asks when a person is present and denies when the
   permission mode has none. If no scanner can run, it denies.
-- **Limit.** **`git push` is not covered**, only `git commit`; nor `curl` or other
-  posters, scripts that publish indirectly, non-GitHub tools, or the GitHub web
-  UI. Files named in a command and the staged diff are read up to 512 KB. The
+- **Limit.** **`git push` is not covered**, only `git commit`; nor scripts that
+  publish indirectly, non-GitHub tools, or the GitHub web UI. `curl` and the
+  other network clients are the outbound guard's (T15), not this hook's.
+  Files named in a command and the staged diff are read up to 512 KB. The
   override `GUARDS_ALLOW_PUBLISH_SECRETS=1` disables it. A line marked
   `guards:synthetic` is excused in a staged diff.
 - **Evidence.** Code: `hooks/publish-guard.sh` (publish detection, the ambiguous
@@ -178,12 +189,11 @@ Each row: the control that exists, its documented limit, and the evidence.
 - **Limit.** **A secret typed in the user's prompt cannot be removed by a hook**;
   it reaches the model and the API unchanged, and the note is advisory (and is
   silently skipped if the service is slow or down). Tool inputs other than
-  `SendMessage` and the publish verbs (`Write`, `Edit`, `curl`) are not scanned.
-  `SendMessage` and the prompt hook have no automated tests.
+  `SendMessage`, the publish verbs and the network commands in T15 (`Write`,
+  `Edit`) are not scanned.
 - **Evidence.** Code: `hooks/sendmessage-guard.sh`,
-  `hooks/userpromptsubmit-guard.sh`. Pinned by: nothing automated; both were
-  verified by hand against a live session (see the plugin's `docs/LIMITS.md`,
-  "Maintenance gaps").
+  `hooks/userpromptsubmit-guard.sh`. Pinned by: plugin
+  `tests/sendmessage-guard.test.sh` and `tests/userpromptsubmit-guard.test.sh`.
 
 ### T7. Hostile tool output tries to steer the model (prompt injection)
 
@@ -223,8 +233,10 @@ Each row: the control that exists, its documented limit, and the evidence.
   PII falls outside the entity set (a 63% figure from the predecessor project's
   benchmark, not reproduced here); flag only unless `PII_GUARD_MODE=redact`.
 - **Evidence.** Code: `app/pii_guard/engine.py`, `app/pii_guard/validators.py` (unit-tested
-  in CI, `tests/validators_test.py`). No automated test exercises the
-  real PII engine; the API contract is tested with it stubbed
+  in CI, `tests/validators_test.py`). `tests/e2e_real_models_test.py` runs the
+  real PII engine and injection model end to end, weekly and on tags
+  (`.github/workflows/e2e.yml`); it is advisory, not a gate on pull requests or on
+  the publish workflow. The API contract is tested with both stubbed
   (`tests/api_contract_test.py`).
 
 ### T10. A network peer reaches the service
@@ -250,8 +262,10 @@ Each row: the control that exists, its documented limit, and the evidence.
   `reason_code`), never scanned text; a failed metrics write never fails a scan.
   The scanner writes its temporary files with a cleanup trap.
 - **Limit.** Any local process can call the loopback service. The metrics
-  directory is created world-writable (mode 777) by the self-heal script so the
-  container user can write to it, and the file is never rotated. The hooks and
+  directory made by the self-heal script is mode 0700 for a host user with uid 1000,
+  mode 0700 plus an ACL entry for uid 1000 where `setfacl` exists, and mode 0777
+  (with a warning) only when neither applies; an older install's 0777 directory is
+  tightened at the next session start. The file is never rotated. The hooks and
   the container run with the user's privileges. The environment-value pass reads
   the process environment, so it protects only what that process holds.
 - **Evidence.** Code: `_log_metric` and `METRICS_PATH` in `app/main.py`;
@@ -266,16 +280,17 @@ Each row: the control that exists, its documented limit, and the evidence.
 - **Limit.** If `GUARDS_ENDPOINT` points elsewhere, raw tool output is sent
   there in plaintext and the answer is trusted: a malicious endpoint could read
   the text, or reply `clean` or return altered text. Nothing authenticates the
-  endpoint. The local fallback runs the vendored `scan.sh`, which is kept in sync
-  with this repository's by hand, with no check.
+  endpoint. The local fallback runs the vendored `scan.sh`. A plugin CI job
+  (`scan-sh-drift`) fails if it differs from this repository's `app/scan.sh` on
+  `main`, so it can lag until a scanner change here is merged.
 - **Evidence.** Code: `hooks/secret-scan-lib.sh` (service first, local fallback),
   `mcp/server.py`. Pinned by: plugin `tests/fast-secret-scan.test.sh` (service
-  down, slow, 404, garbage).
+  down, slow, 404, garbage) and `tests/scan-sh-drift.sh`.
 
 ### T13. A compromised dependency, image or model download
 
-- **Control.** Gitleaks is pinned to a release and its download is checksum
-  verified by the self-heal script; Trivy scans the filesystem and every built
+- **Control.** Gitleaks is pinned to a release and what the self-heal script
+  installs is checked against SHA-256 values (see the limit); Trivy scans the filesystem and every built
   image in CI and on a schedule; dependency version floors for known CVEs; the
   image is rebuilt with OS upgrades; the container runs non-root; the updater is
   pinned to a version and scoped by label to this image.
@@ -313,10 +328,40 @@ Each row: the control that exists, its documented limit, and the evidence.
   file match the plugin's, and publishes the port on loopback only.
 - **Limit.** It downloads and installs a binary into `~/.local/bin`, pulls and
   starts containers, and checks for plugin updates over the network, all
-  automatically at session start. The trust is in GitHub releases, the GHCR image
-  and the checksum file served from the same release.
-- **Evidence.** Code: `bin/guards-selfheal.sh`. Pinned by: nothing automated (the
-  script has no tests).
+  automatically at session start. The trust is in GitHub releases and the GHCR image. The
+  patched gitleaks build is checked against hashes the plugin carries; only the
+  upstream fallback is checked against the checksum file served from the same
+  release (T13).
+- **Evidence.** Code: `bin/guards-selfheal.sh`. Pinned by: plugin
+  `tests/guards-selfheal.test.sh` (always exits 0, an idempotent pull, foreign
+  containers on the port left alone) and `tests/gitleaks-install.test.sh` (the
+  patched download, a hash mismatch and the fallback).
+
+### T15. The model sends a credential to a remote host with a command
+
+- **Control.** A `PreToolUse` hook on Bash (`outbound-guard.sh`) inspects a
+  command whose command word is a network client: `curl`, `wget`, HTTPie
+  (`http`, `https`, `xh`), `nc`/`ncat`/`netcat`, `scp`/`rsync`/`sftp`, or `ssh`
+  (standard input only), also behind `sudo`, `env`, `timeout`, `xargs`,
+  `bash -c` and `eval`. It denies, or asks by permission mode, when the command
+  would send a credential file (classified like the credential-file guard), the
+  whole environment piped in, or a literal credential in the command text. A
+  command that names no client is not inspected.
+- **Limit.** Best effort, not a sandbox. Not seen: a path built through a variable
+  or command substitution (allowed with a note), aliases, functions, scripts and
+  other interpreters, state across commands, clients the parser does not
+  recognise (`openssl s_client`, `aria2c`, `lftp`, `git push`, cloud CLIs), and
+  the content of a file sent as a body (judged by its name and a private-key
+  sniff of its first 10 MB, and the file can change after the check). A command
+  over 8 KB, unbalanced quoting or nesting deeper than 3 gets a note and only the
+  checks that could run. **It fails closed**: at its 9 s deadline, with no
+  scanner, or if the parser crashes, a command that names a client is denied, so
+  the guard can block a legitimate command. The parser also recognises `ftp`,
+  `telnet` and `socat`, which the plugin's `docs/LIMITS.md` lists as unchecked.
+- **Evidence.** Code: `hooks/outbound-guard.sh`, `hooks/outbound-tok.awk`. Pinned
+  by: plugin `tests/outbound-guard.test.sh`, `tests/outbound-parse.test.sh`,
+  `tests/outbound-safeforms.test.sh` and the corpus `tests/outbound-corpus.tsv`.
+  The plugin's `docs/LIMITS.md` ("Outbound commands") is the detail.
 
 ## Out of scope and not defended
 
@@ -330,18 +375,20 @@ Stated plainly, so nobody relies on a guarantee that does not exist.
 - **Indirect prompt injection is mostly not detected** (6% recall). The injection
   verdict is a notice on a prefix, not a control. Nothing stops the model acting
   on hostile data.
-- **`git push` is not covered by the publish guard**, nor `curl`, scripts, other
-  hosts' tools or the web UI.
+- **`git push` is not covered by the publish guard**, nor scripts, other hosts'
+  tools or the web UI. Network clients in Bash are inspected by the outbound
+  guard (T15), within its limits.
 - **Read, Grep and WebFetch output is not scanned**; only credential-file reads
   are denied up front, by name and by content sniff, and indirect reads escape it.
-- **Tool inputs other than `SendMessage` and the publish verbs are not scanned.**
-  A secret written with `Write` or sent by a tool the guards do not name is not
-  looked at.
+- **Tool inputs other than `SendMessage`, the publish verbs and the network
+  commands in T15 are not scanned.** A secret written with `Write` or `Edit` or
+  sent by a tool the guards do not name is not looked at.
 - **Bare, short, or context-free secrets, and encodings beyond base64.**
 - **Anything outside Claude Code sessions with the plugin installed**, and any
   harness whose hooks differ.
-- **A scan that times out, a hook that is killed, a service that is down for the
-  non-secret axes**: fail open by design. Secrets still get a local scan when the
+- **A scan that times out, a service that is down for the non-secret axes**: fail
+  open by design. (A hook that outlives its own deadline does not: it denies or
+  withholds, see B1.) Secrets still get a local scan when the
   service is down; PII and injection notices simply disappear.
 - **An attacker who controls the machine, the container runtime, the user's
   account or the hook environment**, including anyone who can set the override

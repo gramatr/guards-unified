@@ -1,9 +1,9 @@
 # What it does not catch
 
 This is a best-effort filter, not a guarantee. A `clean` verdict means "none of
-these detectors fired", never "this text is safe". Everything below is read
-from the code at v0.2.3 or pinned by a test; items that were checked by running
-`scan.sh` say so, and anything not verified is marked.
+these detectors fired", never "this text is safe". Items that were checked by
+running `scan.sh` say so, with the date of the check, and anything not verified
+is marked.
 
 The design, in one paragraph: **secrets are the one hard rule** (deterministic,
 fast, biased toward over-redaction, fails closed when it knows a secret
@@ -26,19 +26,19 @@ shape nor a telling neighbour.
   service.
 - Short values. Key-name rules need 4 or more characters, `scheme://user:PW@`
   passwords 3 or more, `Authorization` credentials 8 or more (a short bearer
-  value is left alone), cookie values 8 or more. A value that is a placeholder
+  value is left alone), `Cookie` and `Set-Cookie` values 7 or more. A value that is a placeholder
   word is never redacted, so a real credential that is literally `changeme`,
   `password`, `secret`, `token`, `example`, `true`, `none` and the like is
   skipped.
 - Secrets in query parameters other than the listed names (`password`,
   `passwd`, `pwd`, `secret`, `token`, `access_token`, `api_key`, `apikey`,
   `x-amz-signature`, `x-amz-security-token`). For example a `key=` or `sig=`
-  parameter is left alone (checked).
-- Credentials given to `curl -u user:pass` (checked: not covered), and password
+  parameter is left alone (checked 2026-10-22).
+- Credentials given to `curl -u user:pass` (checked 2026-10-22: not covered), and password
   flags of tools other than those listed in the README.
 - Passwords containing a raw `@` or `/` inside a URL: the match stops at the
-  first one, so the part after it stays visible (checked with a throwaway
-  value).
+  first one, so the part after it stays visible (checked 2026-10-22 with a
+  throwaway value).
 - Access-key and client IDs, by default. They are treated as semi-public
   identifiers; the secret half is the boundary. `SECRET_GUARD_REDACT_KEY_IDS=1`
   changes that.
@@ -132,14 +132,13 @@ characters and fullwidth `=` and `:` are normalised across the whole output
     (`1.2.3.4`), a 16-digit id that starts like a card issuer and passes Luhn by
     chance (about one in ten of such ids; the issuer-and-length rule cuts this
     to a small fraction), and the `PERSON`/`LOCATION` noise below.
-  - What changed: on the bake-off corpus (a fabricated set of 324 PII lines and
-    624 ordinary engineering lines, gramatr/guards-coordination#46) 43 of 1000
-    ordinary lines still raise a notice, down from 109; overall recall is 0.96.
-    All of what remains is Presidio reading an engineering word (Jenkins, Darwin,
-    Phoenix) as a person or a hex id as a place. Address recall (Presidio
-    `LOCATION`) is 0.69.
-  - Output filters on those two kinds (`app/pii_guard/filters.py`, since the
-    release after v0.2.7). A `LOCATION` span is dropped if it contains `=` or `_`,
+  - Where the noise is: with `PERSON` and `LOCATION` turned on, what remains
+    is Presidio reading an engineering word (Jenkins, Darwin, Phoenix) as a
+    person or a hex id as a place. That is why they are off by default. The
+    figures from the earlier bake-off were taken with both on and do not
+    describe the default, so they are not repeated here.
+  - Output filters on those two kinds, which matter only when they are turned
+    on (`app/pii_guard/filters.py`, since the release after v0.2.7). A `LOCATION` span is dropped if it contains `=` or `_`,
     a run of four or more digits (a house number before a street name and a ZIP
     after a state code do not count), a run of twelve or more hex characters, no
     letter at all, or is a single lowercase word. A `PERSON` span is dropped if it
@@ -147,11 +146,7 @@ characters and fullwidth `=` and `:` are normalised across the whole output
     list of about 300 software, tool and product names
     (`app/pii_guard/ignore_names.py`, plus `PII_IGNORE_NAMES`) or a generic
     product word such as "Lab" or "Server", with at least one real tool name; a
-    title right before the span (`Dr. Jenkins`) keeps it. On the bake-off corpus
-    this took ordinary lines flagged from 43 to 11 in 1000 with no change in
-    recall; on a second set written afterwards with different tool names and
-    identifier shapes it took them from 64 to 32 in 1000, again with no change
-    in recall. Address recall is unchanged at 0.64 to 0.69.
+    title right before the span (`Dr. Jenkins`) keeps it.
   - Still gets through: a tool or product name that is not in the list
     (Gerrit, Keda, Airbyte Server), project code names that are also place or
     given names (Phoenix, Darwin, Apollo), a surname-like word in a config
@@ -228,8 +223,9 @@ never flagged for PII or injection). The server itself has no such cap.
 - **Very long unbroken runs no longer stall the scan.** A base64 blob, a hash or
   a bundle without spaces used to make the context pass quadratic (a 20 KB run
   took about 10 s). Runs of 256 or more name characters are now masked for the
-  context rules and restored afterwards (20 KB: 0.06 s, 100 KB: 0.15 s), and a
-  secret next to or inside one is still redacted (required self-test cases).
+  context rules and restored afterwards, and a secret next to or inside one is
+  still redacted (required self-test cases; `tests/scan_long_run_test.sh` also
+  caps the time).
 - **No gitleaks or `jq`**: the deterministic passes still run; gitleaks'
   vendor-format coverage is lost, with a log line.
 - **A secret `error` leaves secrets in `/v1/scan`'s `redacted_text`** (the
@@ -248,25 +244,28 @@ never flagged for PII or injection). The server itself has no such cap.
   CI builds the CPU image and runs the redaction self-test against its
   `scan.sh`, and calls the secret route function directly inside the image.
   `tests/e2e_real_models_test.py` is the one test that runs the real PII engine
-  and injection model end to end through `/v1/scan` (five fabricated cases);
+  and injection model end to end through `/v1/scan` (eight fabricated cases);
   `.github/workflows/e2e.yml` runs it weekly, on tag pushes and on demand, on
   the self-hosted arm64 runner. It needs a `HF_TOKEN` repository secret that a
   maintainer must create, and it is advisory, not a gate on `publish.yml`
   (see [RELEASING.md](RELEASING.md#release-checklist-real-model-e2e)). It is
-  five cases, not a measurement of detection quality, and it does not run in
+  a few cases, not a measurement of detection quality, and it does not run in
   `tests/run-all.sh` or on pull requests. `tests/api_contract_test.py` covers the
   size caps and what a failing axis does, with both models stubbed. A live
   `tests/redaction_selftest.py --endpoint` run after a release covers the
   secret axis only.
 - The tests use only fabricated values. They pin what is covered (a required
-  case must be found and redacted) and what must not be (23 harmless lookalikes
-  must come back byte-identical), but they cannot prove that a real credential
+  case must be found and redacted) and what must not be (the harmless lookalikes in
+  the self-test must come back byte-identical), but they cannot prove that a real credential
   of a shape nobody thought of is caught.
 - Timing is tested (a 100 KB hash-heavy scan within 2 s, about 230 KB of prose
   with one secret within 15 s, 300 distinct secret lines all redacted), not
   measured on a range of hardware. The quoted latencies are the maintainers'
   measurements and are not guaranteed.
-- The plugin's vendored copy of `scan.sh` is kept in sync by hand; no check
-  compares the two.
+- The plugin carries a vendored copy of `scan.sh`. The plugin's CI job
+  `scan-sh-drift` fails if it differs from this repository's `app/scan.sh`
+  (apart from a two-line header). It compares against this repository's `main`
+  (or the same tag on a tag build), so it lags until a scanner change here is
+  merged.
 - The GPU path was exercised on two hardware families when it was introduced and
   is not tested per release.
