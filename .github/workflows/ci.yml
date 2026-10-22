@@ -58,6 +58,9 @@ jobs:
         # The release page is built from tests/release_evidence.sh; it must refuse a
         # missing changelog section, a failing suite and an active .trivyignore entry.
         run: bash tests/release_evidence_test.sh
+      - name: Release page body
+        # The page's verify and known-findings text, on synthetic scan data.
+        run: bash tests/release_body_test.sh
       - name: Gitleaks assets script
         # The check mode of tests/gitleaks_assets.sh must refuse a differing hash, a missing
         # target and a missing build; the build itself runs in the gitleaks-assets job.

@@ -436,23 +436,8 @@ jobs:
           set -euo pipefail
           cpu="$(docker buildx imagetools inspect "ghcr.io/gramatr/guards-unified:cpu-$TAG" --format '{{.Manifest.Digest}}')"
           gpu="$(docker buildx imagetools inspect "ghcr.io/gramatr/guards-unified:gpu-$TAG" --format '{{.Manifest.Digest}}')"
-          {
-            cat release-assets/release-notes.md
-            printf '\n---\n\n### Images\n\n'
-            printf -- '- `ghcr.io/gramatr/guards-unified:cpu-%s` (`%s`)\n' "$TAG" "$cpu"
-            printf -- '- `ghcr.io/gramatr/guards-unified:gpu-%s` (`%s`)\n' "$TAG" "$gpu"
-            printf '\n### Verify where it came from\n\n```\n'
-            printf 'gh attestation verify oci://ghcr.io/gramatr/guards-unified:cpu-%s --repo gramatr/guards-unified\n' "$TAG"
-            printf 'gh attestation verify oci://ghcr.io/gramatr/guards-unified:cpu-%s --repo gramatr/guards-unified --predicate-type https://spdx.dev/Document/v2.3\n' "$TAG"
-            printf '```\n\nAttestations show which workflow built the image and what is in it. They do not show that the code is free of bugs or malice.\n'
-            printf '\n### Attached evidence\n\n'
-            printf -- '- `trivy-cpu.json`, `trivy-gpu.json`: full Trivy image scans, all severities, no ignore file.\n'
-            printf -- '- `sbom-cpu.spdx.json`, `sbom-gpu.spdx.json`: SPDX SBOMs.\n'
-            printf -- '- `gitleaks-patched_*`: standalone patched gitleaks for hosts without Docker (linux and darwin, amd64 and arm64), their checksums and binary hashes, with build provenance. `gh attestation verify <file> --repo gramatr/guards-unified` checks one.\n'
-            printf -- '- `test-counts.txt`: suite results for this commit:\n\n```\n'
-            cat release-assets/test-counts.txt
-            printf '```\n'
-          } > release-body.md
+          # Built by a script so tests/release_body_test.sh can check what the page promises.
+          bash tests/release_body.sh "$TAG" "$cpu" "$gpu" release-assets docs/known-unfixed-notes.tsv > release-body.md
           assets=(release-assets/trivy-cpu.json release-assets/trivy-gpu.json release-assets/sbom-cpu.spdx.json release-assets/sbom-gpu.spdx.json release-assets/test-counts.txt release-assets/gitleaks-patched_*)
           if [ "$MODE" = rehearsal ]; then
             # A rehearsal makes a DRAFT prerelease: a draft does not create the git tag (nothing is
