@@ -2,7 +2,7 @@
 
 Covers both packages of the guards line, `guards-unified` (the server image,
 this repository) and [`claude-plugin-guards`](https://github.com/gramatr/claude-plugin-guards)
-(the Claude Code plugin), from the first tagged release to v0.2.10.
+(the Claude Code plugin), from the first tagged release to v0.2.11.
 
 ## How the versions work
 
@@ -24,7 +24,7 @@ this repository) and [`claude-plugin-guards`](https://github.com/gramatr/claude-
   in the commit history) no longer exist. Server pull request references below
   are to the current repository; entries from before the recreation have none.
   Plugin pull request numbers were not affected.
-- All dates are 2026-10-18 to 2026-10-21.
+- All dates are 2026-10-18 to 2026-10-22.
 
 What was hardened, what was loosened and why is in
 [docs/TRADEOFFS.md](docs/TRADEOFFS.md). What the server does not catch is in
@@ -32,7 +32,7 @@ What was hardened, what was loosened and why is in
 
 ---
 
-## [Unreleased]
+## [0.2.11] - 2026-10-22
 
 ### guards-unified
 
@@ -40,11 +40,16 @@ What was hardened, what was loosened and why is in
 - Added: `tests/repro_archive_name_miss.sh` and `docs/security/archive-name-miss-reproduction-2026-10-22.md`, so anyone can reproduce the scanner miss in v0.2.9 and earlier and check that v0.2.10 does not have it.
 - Changed: both CVE gates in CI now fail on fixable MEDIUM findings as well as CRITICAL and HIGH, with unfixed findings still ignored and `.trivyignore` still empty (#63). The macOS option tests take a time-budget factor so a slow shared runner does not fail them (#62).
 - Added: the release page now says that `gh attestation verify` prints nothing outside a terminal (check the exit code, or use `--format json`, with a command that prints the verified digest and the building workflow), and has a section on what the image scans still report: each HIGH or CRITICAL advisory once with its fix status and a reviewed one-sentence assessment from `docs/known-unfixed-notes.tsv`, or "not yet assessed". The page body is built by `tests/release_body.sh`, which has a test.
+- Fixed: a credential word that is a path segment followed by a colon (an API custom-method suffix, or a sentence about a route) is no longer read as a key and its tail redacted. An equals sign after the segment and every key that is not a path segment still redact. The self-test grew from 174 to 181 cases (#70, coordination#99).
+- Changed: the server documents were brought up to date after the 2026-10-22 documentation audit (#69).
 
 ### claude-plugin-guards
 
 - Added: `GUARDS_PII_IGNORE_ENTITIES` (launch environment only) filters the PII types a note names, and a PII type is now named once per session (`GUARDS_PII_NOTE_ONCE=0` restores a note on every command; `GUARDS_STATE_DIR` holds the per-session state, type names only). Secret redaction is untouched (#132).
 - Added: `docs/DATA-FLOW.md`, what the guards read, send, keep and download, with what was and was not checked (#129); the server PII settings and how to set them, with a recorded run, in `docs/CONFIGURATION.md` (#131); the decision not to build a file-write guard for now, with a replay of 1,500 real writes, in `docs/TRADEOFFS.md` and `docs/LIMITS.md` (#130).
+- Fixed: the credential-file guard no longer treats a heredoc that only writes data (`cat > f <<EOF`, `tee f <<EOF`) as a read of a key path named in its text. A heredoc fed to an interpreter, a shell or a pipe is still scanned. `GUARDS_CRED_HEREDOC_STRIP=0` turns it off (#137, coordination#98).
+- Fixed: a `git commit` is judged on its message and staged diff, not on unrelated commands chained on the same line: a heredoc that only writes a file is dropped from the scanned command text, only when nothing on the line can pull that file into the commit. `GUARDS_PUBLISH_COMMIT_SCOPE=0` turns it off. The vendored `scan.sh` carries the route-string fix (#138, coordination#99).
+- Changed: the plugin documents were brought up to date after the 2026-10-22 documentation audit (#136).
 
 ## [0.2.10] - 2026-10-21
 
