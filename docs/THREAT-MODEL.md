@@ -278,14 +278,16 @@ Each row: the control that exists, its documented limit, and the evidence.
   pinned to a version and scoped by label to this image.
 - **Limit.** The images build gitleaks from its release tag with fixed Go
   modules, and `.trivyignore` is empty. A machine without Docker used to download
-  the unpatched upstream release; from the release that first carries the
+  the unpatched upstream release; since v0.2.10, the first release that carries the
   standalone gitleaks assets (issue #55), the plugin's self-heal downloads a
   patched build from this repository's release instead and checks the binary
   against SHA-256 values the plugin carries, not values served beside the download.
   If that fails (no asset yet, a mismatch, an unsupported platform) it falls back
   to the upstream release with a warning, so such a host can still run the weaker
   binary; the warning is the only signal. The patched build's provenance is
-  attested like the images. Python packages are
+  attested like the images. Releases from v0.2.10 on have signed provenance and an SBOM
+  that anyone can check; [VERIFY.md](VERIFY.md) shows how and what that does not prove.
+  Earlier images have no attestation. Python packages are
   installed by version floor, not by hash. The build copies the `uv` tool by tag
   and digest, and the injection model is downloaded at the revision this project
   evaluated, reported by `GET /about`; `INJECTION_GUARD_MODEL_ID` can still
