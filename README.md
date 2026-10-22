@@ -233,18 +233,23 @@ nothing is sent anywhere.
 The container runs as a non-root user (fixed UID and GID 1000). A bind-mounted
 directory that Docker creates on first run is owned by root, which silently
 breaks every metrics write (the scan itself still succeeds, so nothing errs
-loudly). Pre-create the host directory and make it writable:
+loudly). Pre-create the host directory so the container's user (id 1000) can write
+to it and no one else can:
 
 ```
 mkdir -p ~/.local/share/gramatr-guards/metrics
-chmod 777 ~/.local/share/gramatr-guards/metrics
+chmod 700 ~/.local/share/gramatr-guards/metrics
+# if your own user id is not 1000, also give id 1000 access:
+setfacl -m u:1000:rwx,m::rwx ~/.local/share/gramatr-guards/metrics
+setfacl -d -m u:1000:rwx ~/.local/share/gramatr-guards/metrics
 docker run ... -v ~/.local/share/gramatr-guards/metrics:/app/metrics ...
 ```
 
-`chmod 777` is the simple, host-portable choice rather than matching UID
-1000 exactly; on a shared host, `chown 1000:1000` the directory instead. The
-file holds no scanned text. The `claude-plugin-guards` self-heal script creates
-this directory for you.
+Avoid `chmod 777`: it works, but any local user could then read the log and fill
+or replace it. If neither of the above is possible, `chown 1000:1000` the
+directory (needs root). The file holds verdict lines only, no scanned text. The
+`claude-plugin-guards` self-heal script does this for you: mode 700 when your user
+id is 1000, otherwise the ACL, and 777 with a warning only if neither works.
 
 ## Scope: read before relying on this
 
@@ -256,9 +261,12 @@ The short version; the long version with the evidence is
   data, with no override language). Measured recall on that case was 6%
   (InjecAgent, n=200, real tool-output injections). A `clean` injection
   verdict is not a safety guarantee for content an agent is about to act on.
-- **PII detection covers 9 entity types by default, English only.** Not all PII.
-  Presidio finds `PERSON` and `LOCATION`; deterministic checks (Luhn, IBAN mod 97,
-  issued SSN ranges, structured phone numbers, IPv4, email) find the rest.
+- **PII detection covers 6 entity types by default, English only.** Not all PII.
+  Deterministic checks (Luhn, IBAN mod 97, issued SSN ranges, structured phone
+  numbers, email) find email, phone, SSN, passport, card and IBAN. IP addresses,
+  places and names (`IP_ADDRESS`, `LOCATION`, `PERSON`) are off by default,
+  because addresses, hosts and tool names are routine in operator output;
+  `PII_ENTITIES` turns them on (Presidio finds `PERSON` and `LOCATION`).
 - **Injection is flag-only.** The service never alters text for it. PII
   comes with a best-effort redacted copy, but callers decide what to do with
   either.

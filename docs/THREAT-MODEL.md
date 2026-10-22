@@ -120,7 +120,9 @@ Each row: the control that exists, its documented limit, and the evidence.
 
 ### T3. An adversary or a huge input pushes text past the scanner
 
-- **Control.** Linear-time matching, no per-rule match cap, a 15 s scan budget,
+- **Control.** Matching that is linear for ordinary text (the time grows faster than
+  linearly with a very large number of separate matches; see the limit), no per-rule
+  match cap, a 15 s scan budget,
   size caps on the server (413 over 64 KiB on `/v1/scan`, 1 MiB on
   `/v1/scan/secret`), and a hook-side cap with a visible warning when a stream
   is truncated.
@@ -214,8 +216,9 @@ Each row: the control that exists, its documented limit, and the evidence.
 ### T9. Personal data in tool output
 
 - **Control.** Presidio (`PERSON`, `LOCATION`) and deterministic validators (cards, IBANs,
-  SSNs, passports, phone numbers, IPv4, email) find 9 English entity types by default and
-  the plugin flags them in the first 2 KB of Bash output; values are left intact by default.
+  SSNs, passports, phone numbers, email) find 6 English entity types by default (IP addresses,
+  places and names are off unless `PII_ENTITIES` adds them), and the plugin flags them in the
+  first 2 KB of Bash output, naming each type once per session; values are left intact by default.
 - **Limit.** English only; statistical misses and false positives; most real-world
   PII falls outside the entity set (a 63% figure from the predecessor project's
   benchmark, not reproduced here); flag only unless `PII_GUARD_MODE=redact`.
@@ -344,7 +347,7 @@ Stated plainly, so nobody relies on a guarantee that does not exist.
   account or the hook environment**, including anyone who can set the override
   variables (`GUARDS_ALLOW_CRED_READ`, `GUARDS_ALLOW_PUBLISH_SECRETS`,
   `GUARDS_MCP_SCAN`, `GUARDS_MCP_SKIP`).
-- **Personal data beyond the 9 default English entity types**, and any non-English text.
+- **Personal data beyond the 6 default English entity types**, and any non-English text.
 - **Policy, audit, async delivery, and org-wide rules.** These belong to a
   platform that serves the same endpoint contract behind `GUARDS_ENDPOINT`, not
   to this repository.
