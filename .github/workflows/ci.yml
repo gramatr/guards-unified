@@ -102,7 +102,10 @@ jobs:
         with:
           scan-type: fs
           scan-ref: .
-          severity: CRITICAL,HIGH
+          # MEDIUM too: the v0.2.10 rehearsal scan listed 10 findings with a published fix (pip and
+          # three gitleaks Go modules) that a CRITICAL,HIGH gate never looked at. ignore-unfixed
+          # stays, so what nobody can patch yet (Debian packages) does not fail the build.
+          severity: CRITICAL,HIGH,MEDIUM
           ignore-unfixed: true
           exit-code: "1"
 
@@ -117,7 +120,10 @@ jobs:
         with:
           scan-type: image
           image-ref: guards-unified:ci-cpu
-          severity: CRITICAL,HIGH
+          # MEDIUM too: the v0.2.10 rehearsal scan listed 10 findings with a published fix (pip and
+          # three gitleaks Go modules) that a CRITICAL,HIGH gate never looked at. ignore-unfixed
+          # stays, so what nobody can patch yet (Debian packages) does not fail the build.
+          severity: CRITICAL,HIGH,MEDIUM
           ignore-unfixed: true
           exit-code: "1"
 
