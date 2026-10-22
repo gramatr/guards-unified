@@ -1,6 +1,6 @@
 # API reference
 
-The contract of guards-unified v0.2.3, from `app/main.py`. The service is a
+The contract of guards-unified, from `app/main.py`. The service is a
 FastAPI app, listens on port 8700 in the container, speaks JSON, and has **no
 authentication**; bind it to loopback (see
 [CONFIGURATION.md](CONFIGURATION.md)). Request size is capped per route.
@@ -77,7 +77,7 @@ whose models failed to load never starts, so it would not answer at all).
 ```json
 {
   "service": "guards-unified",
-  "version": "0.2.3",
+  "version": "<contents of the VERSION file>",
   "model": "meta-llama/Llama-Prompt-Guard-2-86M",
   "model_revision": "a8ded8e697ce7c355e395a0df51f94adb4a2fd27",
   "attribution": "Built with Llama",
@@ -87,7 +87,8 @@ whose models failed to load never starts, so it would not answer at all).
 ```
 
 `version` is the `VERSION` file baked into the image (`unknown` if the file is
-missing). It is how you tell which release a running container is: `/health`
+missing); the value above is a placeholder, the real one comes from `GET /about`
+on the running container. It is how you tell which release a running container is: `/health`
 says `ok` for any image.
 
 ## Finding shape
