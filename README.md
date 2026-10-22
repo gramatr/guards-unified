@@ -364,7 +364,7 @@ natively on the Mac host instead of in Docker. Neither exists today.
   The plugin carries a vendored copy of `app/scan.sh` for its local fallback
   passes.
 
-Issues are disabled on this repository.
+Questions go to [Discussions](https://github.com/gramatr/.github/discussions); bug reports and proposals are issues, with a form for each. See [CONTRIBUTING.md](https://github.com/gramatr/.github/blob/main/CONTRIBUTING.md): we review code only for changes agreed beforehand. Security problems are reported privately, see [SECURITY.md](SECURITY.md).
 
 ## Licence
 
