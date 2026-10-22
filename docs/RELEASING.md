@@ -65,7 +65,11 @@ The tag push in this repo triggers `publish.yml`, which:
    published image with every severity and no ignore file, downloads the SBOMs
    written by the signing step, and attaches `trivy-cpu.json`, `trivy-gpu.json`,
    `sbom-cpu.spdx.json`, `sbom-gpu.spdx.json` and `test-counts.txt`. The page also
-   lists the image digests and the `gh attestation verify` commands. Only this job
+   lists the image digests and the `gh attestation verify` commands (with the note that the command
+   prints nothing outside a terminal, so a script must check its exit code or ask for `--format json`),
+   and a section on what the image scans still report: every HIGH or CRITICAL advisory once, with whether a
+   fix is published and a reviewed sentence from `docs/known-unfixed-notes.tsv` (an advisory with no line there
+   reads "not yet assessed"). Review that file when a new HIGH appears; `tests/release_body.sh` builds the page. Only this job
    has `contents: write`. A failed publish therefore leaves no release page. A
    re-run after this job failed part-way updates the existing page instead of
    failing on it.

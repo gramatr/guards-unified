@@ -1,0 +1,12 @@
+# Reviewed one-sentence assessments for advisories that stay in the image scan, shown on the release page.
+# Format: advisory id, a tab, one sentence. A HIGH or CRITICAL advisory with no line here is shown as
+# "not yet assessed". Assessments come from the advisory text and the container's setup; none was tested
+# against the image. Add a line, or change one, in the same change that reviews it. Shape only.
+CVE-2026-76642	util-linux mount helper: a local privilege issue; an attacker needs code execution in the container first, and the service mounts nothing.
+CVE-2026-78408	util-linux nsenter: a local privilege issue; needs code execution in the container, and the service does not use nsenter.
+CVE-2026-78409	util-linux mount option: a local path-escape in mount handling; the service mounts nothing.
+CVE-2026-78410	util-linux bind mounts: a local issue in mount handling; the service mounts nothing.
+CVE-2025-69720	ncurses: a buffer overflow in a terminal library; the service runs no ncurses program.
+CVE-2026-16742	systemd-homed: only the shared libraries are installed, and homed does not run in the container.
+CVE-2026-54369	libacl: a local symlink issue in file-ACL handling; needs code execution in the container.
+CVE-2026-9538	Perl Archive::Tar: a denial of service from a crafted archive; the service does not hand archives to Perl.

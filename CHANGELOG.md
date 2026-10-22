@@ -32,6 +32,12 @@ What was hardened, what was loosened and why is in
 
 ---
 
+## [Unreleased]
+
+### guards-unified
+
+- Added: the release page now says that `gh attestation verify` prints nothing outside a terminal (check the exit code, or use `--format json`, with a command that prints the verified digest and the building workflow), and has a section on what the image scans still report: each HIGH or CRITICAL advisory once with its fix status and a reviewed one-sentence assessment from `docs/known-unfixed-notes.tsv`, or "not yet assessed". The page body is built by `tests/release_body.sh`, which has a test.
+
 ## [0.2.10] - 2026-10-21
 
 ### guards-unified
