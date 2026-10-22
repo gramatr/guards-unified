@@ -91,6 +91,8 @@ jobs:
         run: SCAN_BASH=/bin/bash /bin/bash tests/scan_long_run_test.sh
       - name: scan.sh option tests under the system bash (3.2)
         # Skipped until now because its 20 KB-run case did not finish on a Mac (#71).
+        env:
+          GUARDS_TEST_BUDGET_FACTOR: "2"  # shared runner; the timing case passes at 1 on a real Mac
         run: /bin/bash tests/scan_options_test.sh
 
   cve-scan-source:
