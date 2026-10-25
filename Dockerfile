@@ -102,10 +102,13 @@ ENV PATH="/app/.venv/bin:$PATH"
 # CVE-2025-47273, CVE-2026-24049, CVE-2026-23949). Pinning floors here
 # too, not just letting the resolver pick, so this variant can't
 # silently regress to the same vulnerable versions.
+# filelock joined them on 2026-10-25: 3.32.3 was behind CVE-2026-112940 (HIGH,
+# fixed in 4.2.1, which needs Python 3.11+; the image runs 3.12).
 RUN uv pip install --python /app/.venv/bin/python \
       "fastapi>=0.115" "uvicorn[standard]>=0.30" "torch>=2.2" "transformers>=4.44" \
       "presidio-analyzer>=2.2" "presidio-anonymizer>=2.2" "spacy>=3.7" \
       "cryptography>=50.0.0" "setuptools>=78.1.1" "wheel>=0.46.2" "jaraco.context>=6.1.0" \
+      "filelock>=4.2.1" \
       "en-core-web-lg @ https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl"
 
 COPY app/ ./
