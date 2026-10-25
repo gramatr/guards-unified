@@ -332,6 +332,10 @@ jobs:
           echo "--- the merged index:"
           docker buildx imagetools inspect "$staging"
 
+      - name: The merged image's NLP engine loads, before any release tag points at it
+        # A scan and an attestation say nothing about whether the image starts (v0.2.13).
+        run: bash tests/image_smoke.sh "${{ steps.tags.outputs.staging }}"
+
       - name: Trivy scan the merged image before any release tag points at it
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
