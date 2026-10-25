@@ -255,20 +255,20 @@ never flagged for PII or injection). The server itself has no such cap.
 
 ## Testing gaps
 
-- CI cannot start the full service: the injection model is a gated download.
+- CI cannot start the full service: the injection model is a gated download, and
+  the maintainer does not keep a Hugging Face token in this public repository.
   CI builds the CPU image and runs the redaction self-test against its
-  `scan.sh`, and calls the secret route function directly inside the image.
-  `tests/e2e_real_models_test.py` is the one test that runs the real PII engine
-  and injection model end to end through `/v1/scan` (eight fabricated cases);
-  `.github/workflows/e2e.yml` runs it weekly, on tag pushes and on demand, on
-  the self-hosted arm64 runner. It needs a `HF_TOKEN` repository secret that a
-  maintainer must create, and it is advisory, not a gate on `publish.yml`
-  (see [RELEASING.md](RELEASING.md#release-checklist-real-model-e2e)). It is
-  a few cases, not a measurement of detection quality, and it does not run in
-  `tests/run-all.sh` or on pull requests. `tests/api_contract_test.py` covers the
-  size caps and what a failing axis does, with both models stubbed. A live
-  `tests/redaction_selftest.py --endpoint` run after a release covers the
-  secret axis only.
+  `scan.sh`, calls the secret route function directly inside the image, and
+  starts its Presidio analyzer and spaCy model (`tests/image_smoke.sh`, on every
+  pull request, on each built image before it is pushed, and on the merged image
+  before it is promoted). That last check exists because v0.2.13 passed every
+  other check and could not start: a dependency update broke the spaCy tokenizer.
+  **No automated test runs the injection model or the whole service end to end.**
+  A failure in that part is found by running the image by hand with a Hugging
+  Face token of your own. `tests/redaction_selftest.py --endpoint` after a
+  release covers the secret axis only.
+  `tests/api_contract_test.py` covers the size caps and what a failing axis does,
+  with both models stubbed.
 - The tests use only fabricated values. They pin what is covered (a required
   case must be found and redacted) and what must not be (the harmless lookalikes in
   the self-test must come back byte-identical), but they cannot prove that a real credential

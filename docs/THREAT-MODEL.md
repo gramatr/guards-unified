@@ -238,11 +238,9 @@ Each row: the control that exists, its documented limit, and the evidence.
   PII falls outside the entity set (a 63% figure from the predecessor project's
   benchmark, not reproduced here); flag only unless `PII_GUARD_MODE=redact`.
 - **Evidence.** Code: `app/pii_guard/engine.py`, `app/pii_guard/validators.py` (unit-tested
-  in CI, `tests/validators_test.py`). `tests/e2e_real_models_test.py` runs the
-  real PII engine and injection model end to end, weekly and on tags
-  (`.github/workflows/e2e.yml`); it is advisory, not a gate on pull requests or on
-  the publish workflow. The API contract is tested with both stubbed
-  (`tests/api_contract_test.py`).
+  in CI, `tests/validators_test.py`). The API contract is tested with both models
+  stubbed (`tests/api_contract_test.py`). No automated test runs the real PII
+  engine and injection model end to end; see [LIMITS.md](LIMITS.md#testing-gaps).
 
 ### T10. A network peer reaches the service
 
