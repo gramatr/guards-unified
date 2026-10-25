@@ -213,6 +213,14 @@ jobs:
           TAGS: ${{ steps.tags.outputs.list }}
         run: bash tests/image_smoke.sh "$(printf '%s\n' "$TAGS" | head -n1)"
 
+      - name: Run the built image as the real service, before anything is pushed
+        # The real entrypoint with both models, then a scan. Needs the HF_TOKEN repository secret
+        # (the injection model is a gated download); without it this fails and nothing is pushed.
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          TAGS: ${{ steps.tags.outputs.list }}
+        run: bash tests/image_service_smoke.sh "$(printf '%s\n' "$TAGS" | head -n1)"
+
       - name: Push (amd64)
         env:
           TAGS: ${{ steps.tags.outputs.list }}
@@ -264,6 +272,7 @@ jobs:
           TAG: ${{ needs.plan.outputs.tag }}
           VARIANT: ${{ matrix.variant }}
           DOCKERFILE: ${{ steps.file.outputs.dockerfile }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           set -euo pipefail
           tags="$(bash tests/release_tags.sh build "$MODE" "$VARIANT" arm64 "$TAG" "${{ github.sha }}")"
@@ -272,6 +281,7 @@ jobs:
           docker build -f "$DOCKERFILE" "${args[@]}" .
           # Run it before pushing: set -e stops here if the image does not start (v0.2.13).
           bash tests/image_smoke.sh "ghcr.io/gramatr/guards-unified:$(printf '%s\n' $tags | head -n1)"
+          bash tests/image_service_smoke.sh "ghcr.io/gramatr/guards-unified:$(printf '%s\n' $tags | head -n1)"
           for t in $tags; do docker push "ghcr.io/gramatr/guards-unified:$t"; done
 
       - name: Trivy scan the just-published image before anyone pulls it

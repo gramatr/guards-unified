@@ -126,6 +126,13 @@ jobs:
         # v0.2.13 passed every check and could not start: a newer preshed broke the spaCy tokenizer.
         # The gated injection model is not needed to catch that, only the Presidio/spaCy load.
         run: bash tests/image_smoke.sh guards-unified:ci-cpu
+      - name: The image starts as the real service and scans
+        # Needs the HF_TOKEN repository secret (gated injection model). A pull request from a fork has
+        # no secrets, so it skips this step; the release pipeline does not skip it.
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          SMOKE_SKIP_WITHOUT_TOKEN: "1"
+        run: bash tests/image_service_smoke.sh guards-unified:ci-cpu
       - name: Trivy image scan — actual installed deps, not the Dockerfile's version floors
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
