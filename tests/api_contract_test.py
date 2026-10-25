@@ -166,5 +166,58 @@ with mock.patch.object(main, "_scan_secrets", _timed_out_scan):
         )
 
 
+print("a lone surrogate in the text")
+# A JSON string may carry half of a surrogate pair (the escape \ud800). Python parses it, but it cannot be
+# encoded as UTF-8, so the scan input and the JSON response both failed and the caller got a 500.
+seen = []
+
+
+def _recording_scan(text):
+    seen.append(text)
+    return {
+        "type": "secret",
+        "verdict": "clean",
+        "reason_code": None,
+        "detail": {"redacted_text": text, "rule_count": 0},
+    }
+
+
+for route in ("/v1/scan", "/v1/scan/secret"):
+    del seen[:]
+    body = '{"text": "owner: Alice Example \\ud800 tail"}'
+    with mock.patch.object(main, "_scan_secrets", _recording_scan):
+        r = client.post(
+            route, content=body, headers={"content-type": "application/json"}
+        )
+    check(f"{route} answers 200, not 500", r.status_code == 200, r.status_code)
+    if r.status_code == 200:
+        out = r.json()["redacted_text"]
+        check(
+            f"{route} returns text without the lone surrogate",
+            "\ud800" not in out and "\ufffd" in out,
+            ascii(out),
+        )
+        check(
+            f"{route} keeps the text around the surrogate",
+            out.startswith("owner: ") and out.endswith(" tail"),
+            ascii(out),
+        )
+    check(
+        f"{route} hands the credential scan valid text",
+        len(seen) == 1 and "\ud800" not in seen[0],
+        ascii(seen),
+    )
+r = client.post(
+    "/v1/scan",
+    content=b'{"text": "ok \\ud83d\\ude00 emoji"}',
+    headers={"content-type": "application/json"},
+)
+check(
+    "a proper surrogate pair (an emoji) is left alone",
+    r.status_code == 200 and "\U0001f600" in r.json()["redacted_text"],
+    r.text[:120],
+)
+
+
 print("FAIL" if failures else "ok", f"- {len(failures)} failure(s)")
 sys.exit(1 if failures else 0)
