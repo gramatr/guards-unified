@@ -2,7 +2,7 @@
 
 Covers both packages of the guards line, `guards-unified` (the server image,
 this repository) and [`claude-plugin-guards`](https://github.com/gramatr/claude-plugin-guards)
-(the Claude Code plugin), from the first tagged release to v0.2.12.
+(the Claude Code plugin), from the first tagged release to v0.2.13.
 
 ## How the versions work
 
@@ -31,6 +31,18 @@ What was hardened, what was loosened and why is in
 [docs/LIMITS.md](docs/LIMITS.md).
 
 ---
+
+## [0.2.13] - 2026-10-25
+
+### guards-unified
+
+- Fixed: text containing a lone UTF-16 surrogate (the JSON escape `\ud800`, half of a pair with no partner) no longer makes `/v1/scan` and `/v1/scan/secret` answer 500. The credential scan could not take it as input and the response could not be serialized, so the caller got an error and a hook that fails open let the whole output through unscanned. Each lone surrogate is now replaced with U+FFFD when the request is parsed, so every axis sees valid text; a real surrogate pair (an emoji) is left alone. In `redacted_text` the surrogate shows as U+FFFD (#77, coordination #122).
+- Security: the image scan reported `filelock` 3.32.3, pulled in by `huggingface-hub` and `transformers`, as HIGH (CVE-2026-112940, arbitrary file overwrite through an insecure lock file) and failed the image gate on every build. Both Dockerfiles now floor it at 4.2.1, which needs Python 3.11 or newer; the image runs 3.12 (#78).
+
+### claude-plugin-guards
+
+- Fixed: when `GUARDS_ENDPOINT` is not the local stack (loopback, port 8700), the SessionStart self-heal no longer pulls, starts or updates a local container; it only checks the endpoint's `/health` and warns if it does not answer. It used to ignore the setting and keep a local container running next to a remote service. The local secret scan is still the fallback when the endpoint is unreachable (#150, coordination #119).
+- Changed: `guards/docker/SERVER-SIDE.md` says how to run one shared instance on a private network (requirements: private network only, trusted TLS, no body capture on the path, image pinned by digest, at least two replicas) and records a log audit of v0.2.12: marker strings and an email address sent through both scan routes, including malformed, oversized and error-triggering requests, appeared in no log (#151).
 
 ## [0.2.12] - 2026-10-22
 
