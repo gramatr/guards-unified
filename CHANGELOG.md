@@ -2,7 +2,7 @@
 
 Covers both packages of the guards line, `guards-unified` (the server image,
 this repository) and [`claude-plugin-guards`](https://github.com/gramatr/claude-plugin-guards)
-(the Claude Code plugin), from the first tagged release to v0.2.13.
+(the Claude Code plugin), from the first tagged release to v0.2.14.
 
 ## How the versions work
 
@@ -32,7 +32,23 @@ What was hardened, what was loosened and why is in
 
 ---
 
+## [0.2.14] - 2026-10-25
+
+v0.2.13 is withdrawn (below). This release has the same changes plus the fix.
+
+### guards-unified
+
+- Fixed: the image starts again. Rebuilding for v0.2.13 resolved `preshed` 3.0.14, which is binary-incompatible with spaCy 3.8.16, so loading the `en_core_web_lg` tokenizer failed with `OverflowError` and the Presidio analyzer never loaded. Both Dockerfiles now cap `preshed` below 3.0.14 (#80).
+- Changed: nothing could catch a broken start, because CI cannot run the full service (the injection model is a gated download) and the release pipeline only built, scanned and attested. `tests/image_smoke.sh` now loads the Presidio analyzer and its spaCy model, which needs no token, on every pull request, on each built image before it is pushed (amd64 and arm64), and on the merged image before the scan, attestation and promotion (#80).
+- Removed: the end-to-end workflow and test that needed a Hugging Face token (`e2e.yml`, `tests/e2e_real_models_test.py`) and the by-hand service smoke script, because the token will not be kept in a public repository. `docs/LIMITS.md` says that no automated test now runs the injection model or the whole service end to end (#81).
+
+### claude-plugin-guards
+
+- No changes; the version moves in lockstep.
+
 ## [0.2.13] - 2026-10-25
+
+> **Withdrawn.** The v0.2.13 images could not start (a `preshed` update broke spaCy; see 0.2.14). The floating `:cpu` and `:gpu` tags were moved back to v0.2.12 and the `-v0.2.13` tags and release page were left in place; use v0.2.14.
 
 ### guards-unified
 
