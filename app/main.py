@@ -39,6 +39,7 @@ travel with the code automatically:
 import json
 import logging
 import os
+import re
 import subprocess
 import tempfile
 from contextlib import asynccontextmanager
@@ -48,7 +49,7 @@ from pathlib import Path
 import injection_guard.model as injection_model
 import pii_guard.engine as pii_engine
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("guards_unified")
@@ -116,8 +117,21 @@ async def _lifespan(_: FastAPI):
 app = FastAPI(title="guards-unified", lifespan=_lifespan)
 
 
+# JSON allows a lone UTF-16 surrogate (the escape \ud800), which Python parses into a str
+# that cannot be encoded as UTF-8. It would break the credential scan's stdin and the JSON
+# response, and the caller would get a 500 and an unscanned output. A lone surrogate is not
+# valid text, so it is replaced up front and every axis sees valid text. A proper pair
+# (an emoji) is already one character by this point and is untouched.
+_LONE_SURROGATE = re.compile("[\ud800-\udfff]")
+
+
 class ScanRequest(BaseModel):
     text: str
+
+    @field_validator("text")
+    @classmethod
+    def _replace_lone_surrogates(cls, value: str) -> str:
+        return _LONE_SURROGATE.sub("\ufffd", value)
 
 
 def _env_int(name: str, default: int) -> int:
