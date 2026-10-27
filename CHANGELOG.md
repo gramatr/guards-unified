@@ -2,7 +2,7 @@
 
 Covers both packages of the guards line, `guards-unified` (the server image,
 this repository) and [`claude-plugin-guards`](https://github.com/gramatr/claude-plugin-guards)
-(the Claude Code plugin), from the first tagged release to v0.2.14.
+(the Claude Code plugin), from the first tagged release to v0.2.15.
 
 ## How the versions work
 
@@ -31,6 +31,18 @@ What was hardened, what was loosened and why is in
 [docs/LIMITS.md](docs/LIMITS.md).
 
 ---
+
+## [0.2.15] - 2026-10-27
+
+### guards-unified
+
+- Fixed: the context rules no longer redact a value that is a reference to a credential. The publish guard denied commits, PR bodies and issue bodies that held no credential; 20 of 23 false-positive reports in six days were one rule, and in every one the value was a reference. Six narrow cases are now exempt: an environment variable name written in capitals; a file name followed only by line numbers; a Terraform `var.`, `local.`, `data.`, `module.` or resource reference after a spaced equals sign; the start of an index expression whose quote follows; a keyword argument forwarding its own parameter; the target key of an External Secrets data entry when a `remoteRef` or `ExternalSecret` sits next to it. Helm `existing...Secret` keys and keys ending in a usage word (`used`, `total`, `budget`) are skipped as keys that describe a secret. `SECRET_GUARD_REFERENCE_VALUES=0` turns all of it off. A real credential written in one of these shapes is not redacted (recorded in `docs/TRADEOFFS.md`), and near misses are pinned as must-redact cases. Measured on a 14 KB input, n=100: median 0.728 s before, 0.709 s after (#86, coordination #124).
+
+### claude-plugin-guards
+
+- Added: the person can approve one blocked publish once, including in auto, bypassPermissions and dontAsk modes. Where an ambiguous match is denied because nobody can answer an approval prompt, the deny names an id and a command; the person runs `bin/guards-approve.sh <id>` in their own session (the `!` prefix) and the identical retry passes once, within ten minutes (`GUARDS_APPROVE_TTL`). A private key, a vendor token format or a value from the session environment is never offered for approval, an agent that tries to run the command or touch the store is refused, `check_before_publish` does not use an approval up, and each use is logged by rule without text. `GUARDS_PUBLISH_APPROVE=0` turns it off (#157, coordination #124).
+- Changed: the vendored `scan.sh` carries the reference-value change above (#156).
+- Fixed: `guards-selfheal.test.sh` unsets `GUARDS_ENDPOINT`; on a machine pointed at a shared service it inherited the variable and failed 23 cases (#157).
 
 ## [0.2.14] - 2026-10-25
 
