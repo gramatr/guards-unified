@@ -9,6 +9,11 @@
 #       Default OFF: only meaningful where the scanner shares the session's
 #       environment.
 #
+#   SECRET_GUARD_REFERENCE_VALUES=0  turn off the reference-value exemptions
+#       (a key that names a Secret next to a name, a forwarded keyword
+#       argument, a Terraform reference, ...) and redact them like any value.
+#       Default ON (coordination#124).
+#
 # All values are fabricated. Works with or without gitleaks installed.
 
 set -uo pipefail
@@ -33,6 +38,13 @@ expect_same    "wrapped key word in prose is not a value"   'the "password:" fie
 # is indistinguishable from the prose above, so it is NOT redacted.
 expect_same    "accepted: wrapped key + glued value"        'x "pw:"abcdefgh"'
 expect_changed "nested shell quoting still redacted"        'bash -c "PASSWORD="abcdefgh" ./run"'
+
+# Reference values (coordination#124): not redacted by default, redacted again with the switch off.
+REFS=('existingSecret: "my-chart-credentials"' 'client(api_key=api_key)' 'administrator_password = azurerm_key_vault_secret.sql.value' 'x: ctx_tokens_used: 4200')  # guards:synthetic
+for r in "${REFS[@]}"; do
+  expect_same    "reference value kept by default: $r"          "$r"
+  expect_changed "reference value redacted with switch off: $r" "$r" SECRET_GUARD_REFERENCE_VALUES=0
+done
 
 ID='AccessKey : 48388a15798489a302330828b2388025'
 expect_same    "key ID untouched by default"        "$ID"

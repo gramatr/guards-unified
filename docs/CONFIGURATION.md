@@ -31,6 +31,7 @@ file. These are the defaults of the release in `VERSION`.
 | `SECRET_GUARD_SKIP_GITLEAKS` | `0` | scan.sh | `1` skips gitleaks and runs only the deterministic passes. |
 | `SECRET_GUARD_REDACT_KEY_IDS` | `0` | scan.sh | `1` also redacts access-key and client IDs. |
 | `SECRET_GUARD_ENV_VALUES` | `0` | scan.sh | `1` redacts the values of the scanner's own secret-named environment variables wherever they appear. In this service that means the container's environment, which is almost never what you want; leave it off. |
+| `SECRET_GUARD_REFERENCE_VALUES` | `1` | scan.sh | `0` turns off the reference-value exemptions (a key that names a Secret next to a name, a forwarded keyword argument, a Terraform reference, `secretKey` beside a `remoteRef`) so they redact like any other value. See [TRADEOFFS.md](TRADEOFFS.md). |
 | `SECRET_GUARD_CTX_LINE_MAX` | `2048` | scan.sh | A line longer than this many bytes that also has at least `SECRET_GUARD_CTX_LINE_HITS` credential words is cut into pieces for the context rules (the other passes see the whole line). `0` turns the cutting off. |
 | `SECRET_GUARD_CTX_LINE_HITS` | `150` | scan.sh | The credential-word count from which a long line is cut. |
 | `HF_TOKEN` | unset | library | Hugging Face access token, needed on first start to download the gated injection model (the account must have accepted the Llama 4 Community License). Not needed once the model is cached. |
