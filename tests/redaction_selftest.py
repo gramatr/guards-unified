@@ -339,6 +339,16 @@ def main() -> int:
         "config/dep-lookalike-unscoped-bare": ('    "api-key-rotator": "2.0.0",', ["2.0.0"]),  # guards:synthetic
         "config/dep-lookalike-scoped-nonversion": ('    "@scope/api-key": "Xk9mQ4vT2pLw8RzN5bJc",', ["Xk9mQ4vT2pLw8RzN5bJc"]),  # guards:synthetic
         "config/dep-lookalike-token-long": ('    "access-token": "Tq7vN2xLm9Kd4RzP8wYbQ3sF",', ["Tq7vN2xLm9Kd4RzP8wYbQ3sF"]),  # guards:synthetic
+        # Reference-value exemptions (coordination#124) must not become blind spots: the same key names
+        # holding a real-looking value, or outside the structure that makes them a reference, still redact.
+        "config/ref-secretkey-no-eso-context": (f"secretKey: {sv}", [sv]),  # guards:synthetic
+        "config/ref-secretkey-quoted-literal": (f'secretKey: "{sv}"', [sv]),  # guards:synthetic
+        "config/ref-existing-password-value": (f"existing_password: {sv}", [sv]),  # guards:synthetic
+        "config/ref-hcl-literal": (f'administrator_password = "{sv}"', [sv]),  # guards:synthetic
+        "config/ref-kwarg-literal": (f"submit(api_key={sv}, model=m)", [sv]),  # guards:synthetic
+        "config/ref-kwarg-other-name": (f"submit(api_key={sv}_x, model=m)", [sv]),  # guards:synthetic
+        "config/ref-tokens-used-lookalike": (f"auth_token_value: {sv}", [sv]),  # guards:synthetic
+        "config/ref-file-key-with-secret": (f"credentials.json: {sv}", [sv]),  # guards:synthetic
         "config/code-quoted-in-object": (f'body: JSON.stringify({{ subject_token: "{sv}", provider: P }}),', [sv]),  # guards:synthetic
     }
     for cname, (text, material) in config_secrets.items():
@@ -415,6 +425,22 @@ def main() -> int:
         "benign/route-custom-method": "curl -X POST https://api.example.invalid/v1/secret:rotate",  # guards:synthetic
         "benign/route-colon-prose": "GET /api/v1/secret: returns the stored value",  # guards:synthetic
         "benign/route-token-colon": "POST /oauth2/token: issues a short lived bearer",  # guards:synthetic
+        # References, not values (coordination#124): manifest fields that name a Secret or key, code that passes a
+        # reference along, a citation, an environment variable's name. All fabricated.
+        "benign/ref-eso-secretkey": "  data:\n    - secretKey: db-admin-password\n      remoteRef:\n        key: prod/db-admin\n",  # guards:synthetic
+        "benign/ref-eso-secretkey-diff": "+    - secretKey: db-admin-password\n+      remoteRef:\n+        key: prod/db-admin\n",  # guards:synthetic
+        "benign/ref-eso-secretkey-quoted": '  - secretKey: "db-admin-password"\n    remoteRef:\n      key: prod/db-admin\n',  # guards:synthetic
+        "benign/ref-helm-existing-secret": 'existingSecret: "my-chart-credentials"',  # guards:synthetic
+        "benign/ref-helm-existing-secret-bare": "auth:\n  existingSecret: db-credentials\n",  # guards:synthetic
+        "benign/ref-helm-existing-secret-key": "auth.existingSecretPasswordKey: password-key",  # guards:synthetic
+        "benign/ref-kwarg-passthrough": "    job = submit(api_key=api_key, model=model)",  # guards:synthetic
+        "benign/ref-kwarg-passthrough-end": "    return client(api_key=api_key)",  # guards:synthetic
+        "benign/ref-hcl-resource": "administrator_password = azurerm_key_vault_secret.sql_admin.value",  # guards:synthetic
+        "benign/ref-hcl-var": "client_secret = var.client_secret",  # guards:synthetic
+        "benign/ref-env-subscript": 'sp_password = os.environ["AZURE_SP_PASSWORD"]',  # guards:synthetic
+        "benign/ref-tokens-used": "writeCtxTokens(dir, { ctx_tokens_used: 4200 });",  # guards:synthetic
+        "benign/ref-file-line-citation": "`src/cli-credentials.ts`'s fence() helper (src/cli-credentials.ts:128)",  # guards:synthetic
+        "benign/ref-env-name-prose": "3. SECRETS: AZURE_COG_API_KEY does not yet hold a value",  # guards:synthetic
         "benign/route-in-quotes": 'call "/internal/v2/password: reset flow" before retry',  # guards:synthetic
     }
     benign.update({
