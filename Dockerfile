@@ -115,6 +115,12 @@ RUN uv pip install --python /app/.venv/bin/python \
       "preshed<3.0.14" \
       "en-core-web-lg @ https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl"
 
+# uv is a build tool: it made the venv and ran the installs above, and the service never calls it. Remove it
+# from the image the same way pip is removed, so a vulnerability in its embedded Rust libraries (a rustls
+# advisory failed the image scan on 2026-10-28) cannot fail the gate or ship to anyone. The venv does not
+# need it to run.
+RUN rm -f /usr/local/bin/uv /usr/local/bin/uvx
+
 COPY app/ ./
 # So a running container can report what it actually is via /about --
 # see app/main.py's GUARDS_UNIFIED_VERSION. Without this, a stale pull
