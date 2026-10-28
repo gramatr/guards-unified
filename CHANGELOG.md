@@ -2,7 +2,7 @@
 
 Covers both packages of the guards line, `guards-unified` (the server image,
 this repository) and [`claude-plugin-guards`](https://github.com/gramatr/claude-plugin-guards)
-(the Claude Code plugin), from the first tagged release to v0.2.15.
+(the Claude Code plugin), from the first tagged release to v0.2.16.
 
 ## How the versions work
 
@@ -31,6 +31,18 @@ What was hardened, what was loosened and why is in
 [docs/LIMITS.md](docs/LIMITS.md).
 
 ---
+
+## [0.2.16] - 2026-10-28
+
+### guards-unified
+
+- Fixed: three more shapes the publish guard denied with no rewording that helped (coordination #125). An HTTP header name used as a quoted, hyphenated object key whose value is a variable or member chain that itself ends in a credential word; a plural heading word, or the second label of a comma list, followed by one plain word and more words, as in a doc comment sentence; a parameter typed only as a primitive, up to the end of its list or a return type, in TypeScript, Python and Rust, including a union of primitives. The exemptions sit under `SECRET_GUARD_REFERENCE_VALUES=0`. Near misses are pinned as cases that must still redact (a bare literal, a word that does not end in a credential word, an unquoted header, a quoted literal, a digit in the word, a word alone at the end of a line, a singular key, a default value). Measured on a 20 KB input, n=100: median 1.068 s before, 1.020 s after (#88).
+- Fixed: the text before a key was handed to the code-shape and dependency checks twice, so a quote earlier on the same line flipped their string test and a quoted key on the first line of an input, such as the start of a commit message or PR body, was redacted (#88). Not behind the switch.
+- Security: the `uv` build tool is no longer in the published images. Its embedded `rustls` 0.23.45 failed the image scan (a MEDIUM advisory, fixed in 0.23.46) for every build. `uv` only makes the virtual environment and runs the installs; both Dockerfiles delete it after the last install step, like the base image's `pip` (#88).
+
+### claude-plugin-guards
+
+- Changed: the vendored `scan.sh` carries the server change above (#159).
 
 ## [0.2.15] - 2026-10-27
 
