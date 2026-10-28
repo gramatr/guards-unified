@@ -104,7 +104,9 @@ Build inputs are pinned so a rebuild cannot change the image without a commit:
 - **`uv`** (copied into both images): tag and digest, in `Dockerfile` and
   `Dockerfile.cpu`. To bump, pick a release, read its digest with
   `docker buildx imagetools inspect ghcr.io/astral-sh/uv:<version>`, and change
-  tag and digest together in both files.
+  tag and digest together in both files. It is a build tool only: both files
+  delete it after the last install step, so it is not in the published images
+  and its embedded libraries cannot fail the image scan.
 - **Base images** (`golang:1.26-bookworm`, `python:3.12-slim`): tag and digest
   together, in `Dockerfile` and `Dockerfile.cpu`.
 - **gitleaks:** built from a commit, not a tag. `GITLEAKS_COMMIT` is the commit
