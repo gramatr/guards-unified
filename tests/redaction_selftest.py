@@ -349,6 +349,17 @@ def main() -> int:
         "config/ref-kwarg-other-name": (f"submit(api_key={sv}_x, model=m)", [sv]),  # guards:synthetic
         "config/ref-tokens-used-lookalike": (f"auth_token_value: {sv}", [sv]),  # guards:synthetic
         "config/ref-file-key-with-secret": (f"credentials.json: {sv}", [sv]),  # guards:synthetic
+        # coordination#125: the exemptions for a header name key, a label and a sentence in a doc comment, and a
+        # parameter typed only as a string must not hide a value. A literal, a name that does not end in a
+        # credential word, an unquoted header, a digit in the word, a word alone, a singular key, a default value.
+        "config/hdr-literal-bare": (f'    headers: {{ "x-api-key": {sv} }},', [sv]),  # guards:synthetic
+        "config/hdr-word-not-credential": ('    headers: { "x-api-key": ZqxKmNpLwvTdQrst, other: 1 },', ["ZqxKmNpLwvTdQrst"]),  # guards:synthetic
+        "config/hdr-unquoted-key": (f"x-api-key: {sv}", [sv]),  # guards:synthetic
+        "config/hdr-quoted-literal": (f'  const cfg = {{ "x-api-key": "{sv}" }};', [sv]),  # guards:synthetic
+        "config/label-with-digits": (f"  // tokens: {sv} and more words", [sv]),  # guards:synthetic
+        "config/label-word-alone": ("  // secrets: correcthorsebatterystaple", ["correcthorsebatterystaple"]),  # guards:synthetic
+        "config/label-singular-passphrase": ("  // password: correct horse battery staple", ["correct"]),  # guards:synthetic
+        "config/param-default-literal": (f'function auth(password = "{sv}"): boolean {{', [sv]),  # guards:synthetic
         "config/code-quoted-in-object": (f'body: JSON.stringify({{ subject_token: "{sv}", provider: P }}),', [sv]),  # guards:synthetic
     }
     for cname, (text, material) in config_secrets.items():
@@ -441,7 +452,21 @@ def main() -> int:
         "benign/ref-tokens-used": "writeCtxTokens(dir, { ctx_tokens_used: 4200 });",  # guards:synthetic
         "benign/ref-file-line-citation": "`src/cli-credentials.ts`'s fence() helper (src/cli-credentials.ts:128)",  # guards:synthetic
         "benign/ref-env-name-prose": "3. SECRETS: AZURE_COG_API_KEY does not yet hold a value",  # guards:synthetic
-        "benign/route-in-quotes": 'call "/internal/v2/password: reset flow" before retry',  # guards:synthetic
+        # coordination#125: a header name as an object key with a variable value, a label and a sentence in a doc
+        # comment, and a parameter typed only as a string. All fabricated.
+        "benign/hdr-first-line": '    headers: { "api-key": apiKey, "content-type": "application/json" },',  # guards:synthetic
+        "benign/hdr-member-chain": "    headers: { 'api-key': this.apiKey },",  # guards:synthetic
+        "benign/hdr-plain-variable": "  const headers = { 'x-api-key': key, Accept: 'application/json' };",  # guards:synthetic
+        "benign/hdr-nested-chain": "      'x-auth-token': session.authToken",  # guards:synthetic
+        "benign/label-doc-comment": " * Credentials, tokens: validate each one against the stored hash before use.",  # guards:synthetic
+        "benign/label-plural-sentence": " * Reconciles stale tokens: rewrites orphaned rows after a failed sync",  # guards:synthetic
+        "benign/label-list-singular": "  // token, secret: handled by the vault client, never logged",  # guards:synthetic
+        "benign/label-heading-capital": " * Credentials: Bitwarden Secrets Manager items are synced by the operator",  # guards:synthetic
+        "benign/param-return-type": "function auth(password: string): boolean {",  # guards:synthetic
+        "benign/param-python-return": "def auth(password: str) -> bool:",  # guards:synthetic
+        "benign/param-rust-ref": "fn login(token: &str) -> Result<()> {",  # guards:synthetic
+        "benign/param-arrow": "  (token: string) => verify(token)",  # guards:synthetic
+        "benign/route-in-quotes":'call "/internal/v2/password: reset flow" before retry',  # guards:synthetic
     }
     benign.update({
         "benign/wrapped-key-prose": 'the "password:" field, then "some text here"',
