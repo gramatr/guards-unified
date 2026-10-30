@@ -2,7 +2,7 @@
 
 Covers both packages of the guards line, `guards-unified` (the server image,
 this repository) and [`claude-plugin-guards`](https://github.com/gramatr/claude-plugin-guards)
-(the Claude Code plugin), from the first tagged release to v0.2.16.
+(the Claude Code plugin), from the first tagged release to v0.2.17.
 
 ## How the versions work
 
@@ -31,6 +31,20 @@ What was hardened, what was loosened and why is in
 [docs/LIMITS.md](docs/LIMITS.md).
 
 ---
+
+## [0.2.17] - 2026-10-30
+
+### guards-unified
+
+- Fixed: an expansion written for a remote shell is a reference, not a value (coordination #129). Inside a double-quoted ssh command the remote shell's expansion has to be written with an escaped dollar sign, so the local shell leaves it alone, and the scanner took the backslash for part of a value: a command substitution that reads a file, a braced variable, a plain variable and a backtick substitution were all redacted, and the outbound guard denied an ssh command that read a password from a file. This was so on every version since 0.2.2. Now left alone: a value starting with an escaped dollar sign, and a backtick substitution whose command is a reader of a file or a secret store (cat, pass, op, bws, vault, aws, gcloud, az, kubectl, security, gpg, sops, head, tail, printenv, jq, yq, base64). A password in a markdown code span still redacts. These sit under `SECRET_GUARD_REFERENCE_VALUES=0` (#90).
+- Fixed: two literal forms that were never redacted, on any version, now are. A value in escaped quotes (a literal inside a double-quoted ssh string), and a literal inside an echo or printf substitution, plain, escaped or in backticks. Not behind the switch (#90).
+- Fixed: the two new rules cost time on every input, and the timing I gave for #90 missed it. Each rule adds a regex pass over the whole text for each of two key families, which is free on text full of credential words and about 13 percent on a large ordinary output; the plugin's 190 KB combined-hook case went from about 700 ms to about 795 ms, and on the shared macOS runner it crossed its 4000 ms budget, turning `hooks-macos` red on the plugin's main. Both rules now run only when the text can hold their shape (a backslash-quote, or the word echo or printf), and the same case is back to about 700 ms (#91).
+
+### claude-plugin-guards
+
+- Added: the person can approve one blocked command once for the outbound guard too, including in auto, bypassPermissions and dontAsk modes, as for the publish guard in 0.2.15. The outbound guard raises two independent findings for one command (the scanner's rules and the parser's own flag that an operand may carry a literal); one approval covers both. A vendor-shaped value, a private key header, a value from the session environment and every by-reference deny stay unconditional. `GUARDS_OUTBOUND_APPROVE=0` turns it off (#161, coordination #129).
+- Fixed: approve-once never offers an approval for a vendor token or a private key header, even on a machine without gitleaks. Without it such a token is seen only by the weaker ambiguous rules, so the guard could offer an approval for a real token, in the publish guard as well as the outbound guard. The shape of the text now decides, not the rule label (#161).
+- Changed: the vendored `scan.sh` carries the server changes above (#162, #163).
 
 ## [0.2.16] - 2026-10-28
 
