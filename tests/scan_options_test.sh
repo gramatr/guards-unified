@@ -43,6 +43,8 @@ expect_changed "nested shell quoting still redacted"        'bash -c "PASSWORD="
 REFS=('existingSecret: "my-chart-credentials"' 'client(api_key=api_key)' 'administrator_password = azurerm_key_vault_secret.sql.value' 'x: ctx_tokens_used: 4200')  # guards:synthetic
 # coordination#125: a header name key with a member chain, a label and a sentence in a doc comment, a return type
 REFS+=("    headers: { 'api-key': this.apiKey }," ' * Credentials, tokens: validate each one before use.' 'function auth(password: string): boolean {')  # guards:synthetic
+# coordination#129: expansions written for a remote shell
+REFS+=('ssh host "export DB_PASSWORD=\$(cat /home/user/.lz_pw) && run"' 'export API_TOKEN=`cat /run/secrets/api_token`')  # guards:synthetic
 for r in "${REFS[@]}"; do
   expect_same    "reference value kept by default: $r"          "$r"
   expect_changed "reference value redacted with switch off: $r" "$r" SECRET_GUARD_REFERENCE_VALUES=0
