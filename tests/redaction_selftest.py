@@ -345,6 +345,21 @@ def main() -> int:
         "config/ref-secretkey-quoted-literal": (f'secretKey: "{sv}"', [sv]),  # guards:synthetic
         "config/ref-existing-password-value": (f"existing_password: {sv}", [sv]),  # guards:synthetic
         "config/ref-hcl-literal": (f'administrator_password = "{sv}"', [sv]),  # guards:synthetic
+        # A remote shell command in double quotes writes its expansions as an escaped dollar sign or in backticks
+        # (the escape keeps the local shell from expanding them). A literal in the same positions still redacts,
+        # and so does a literal in escaped quotes, which no rule read before.
+        "config/esc-quoted-literal": (f'ssh host "export DB_PASSWORD=\\"{sv}\\" && run"', [sv]),  # guards:synthetic
+        "config/esc-quoted-literal-first": (f'export DB_PASSWORD=\\"{sv}\\"', [sv]),  # guards:synthetic
+        "config/esc-quoted-token": (f'ssh host "API_TOKEN=\\"{sv}\\" ./go"', [sv]),  # guards:synthetic
+        "config/esc-bare-literal": (f'ssh host "export DB_PASSWORD={sv} && run"', [sv]),  # guards:synthetic
+        "config/esc-backtick-word": (f"export DB_PASSWORD=`{sv}`", [sv]),  # guards:synthetic
+        "config/esc-backtick-not-a-reader": ("export DB_PASSWORD=`pass`", ["`pass`"]),  # guards:synthetic
+        # A literal inside an echo or printf substitution was never redacted: the bare value was the opening word.
+        "config/subst-echo-literal": (f"export DB_PASSWORD=$(echo {sv})", [sv]),  # guards:synthetic
+        "config/subst-echo-literal-quoted": (f'export DB_PASSWORD=$(echo "{sv}")', [sv]),  # guards:synthetic
+        "config/subst-printf-literal": (f"export DB_PASSWORD=$(printf {sv})", [sv]),  # guards:synthetic
+        "config/subst-esc-echo-literal": (f'ssh host "export DB_PASSWORD=\\$(echo {sv}) && run"', [sv]),  # guards:synthetic
+        "config/subst-backtick-echo-literal": (f"export DB_PASSWORD=`echo {sv}`", [sv]),  # guards:synthetic
         "config/ref-kwarg-literal": (f"submit(api_key={sv}, model=m)", [sv]),  # guards:synthetic
         "config/ref-kwarg-other-name": (f"submit(api_key={sv}_x, model=m)", [sv]),  # guards:synthetic
         "config/ref-tokens-used-lookalike": (f"auth_token_value: {sv}", [sv]),  # guards:synthetic
@@ -448,7 +463,23 @@ def main() -> int:
         "benign/ref-kwarg-passthrough-end": "    return client(api_key=api_key)",  # guards:synthetic
         "benign/ref-hcl-resource": "administrator_password = azurerm_key_vault_secret.sql_admin.value",  # guards:synthetic
         "benign/ref-hcl-var": "client_secret = var.client_secret",  # guards:synthetic
-        "benign/ref-env-subscript": 'sp_password = os.environ["AZURE_SP_PASSWORD"]',  # guards:synthetic
+        # coordination#129: expansions in a remote command written inside double quotes (an escaped dollar sign,
+        # or backticks), reading a file or a secret store. The value is never in the command.
+        "benign/esc-cat-file": 'ssh host "export CLICKHOUSE_PASSWORD=\\$(cat /home/user/.lz_pw) && run"',  # guards:synthetic
+        "benign/esc-cat-file-first": "      export CLICKHOUSE_PASSWORD=\\$(cat /home/user/.lz_pw) && \\\\",  # guards:synthetic
+        "benign/esc-cat-file-psql": 'ssh host "PGPASSWORD=\\$(cat /home/user/.pgpass_pw) psql -h db -c x"',  # guards:synthetic
+        "benign/esc-braced": 'ssh host "export DB_PASSWORD=\\${LZ_PW} && run"',  # guards:synthetic
+        "benign/esc-variable": 'ssh host "export DB_PASSWORD=\\$LZ_PW && run"',  # guards:synthetic
+        "benign/esc-double-escape": 'ssh host "ssh inner \\"export DB_PASSWORD=\\\\\\$(cat /home/user/.lz_pw)\\""',  # guards:synthetic
+        "benign/backtick-cat": "export API_TOKEN=`cat /run/secrets/api_token`",  # guards:synthetic
+        "benign/backtick-cat-quoted": 'export API_TOKEN="`cat /run/secrets/api_token`"',  # guards:synthetic
+        "benign/backtick-pass": "export DB_PASSWORD=`pass show prod/db`",  # guards:synthetic
+        "benign/esc-backtick-cat": 'ssh host "export API_TOKEN=\\`cat /run/secrets/api_token\\` && run"',  # guards:synthetic
+        "benign/subst-echo-variable": 'export DB_PASSWORD=$(echo $LZ_PASSWORD_FROM_ENV)',  # guards:synthetic
+        "benign/subst-echo-quoted-variable": 'export DB_PASSWORD=$(echo "$LZ_PASSWORD_FROM_ENV")',  # guards:synthetic
+        "benign/subst-esc-echo-variable": 'ssh host "export DB_PASSWORD=\\$(echo \\$LZ_PASSWORD_FROM_ENV) && run"',  # guards:synthetic
+        "benign/esc-quoted-expansion":'ssh host "export DB_PASSWORD=\\"\\$(cat /home/user/.lz_pw)\\" && run"',  # guards:synthetic
+        "benign/ref-env-subscript":'sp_password = os.environ["AZURE_SP_PASSWORD"]',  # guards:synthetic
         "benign/ref-tokens-used": "writeCtxTokens(dir, { ctx_tokens_used: 4200 });",  # guards:synthetic
         "benign/ref-file-line-citation": "`src/cli-credentials.ts`'s fence() helper (src/cli-credentials.ts:128)",  # guards:synthetic
         "benign/ref-env-name-prose": "3. SECRETS: AZURE_COG_API_KEY does not yet hold a value",  # guards:synthetic
