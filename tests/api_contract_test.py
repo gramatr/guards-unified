@@ -12,6 +12,7 @@ only.
 
 import datetime
 import importlib
+import logging
 import os
 import sys
 import tempfile
@@ -31,6 +32,18 @@ os.environ["SCAN_FULL_MAX_BYTES"] = "2000"
 os.environ["SCAN_SECRET_MAX_BYTES"] = "5000"
 
 pii_fail = {"on": False}
+# Which model loaders raise at startup, to test starting without an axis.
+load_fail = {"pii": False, "injection": False}
+
+
+def _load_engines():
+    if load_fail["pii"]:
+        raise RuntimeError("stubbed PII load failure")
+
+
+def _load_model():
+    if load_fail["injection"]:
+        raise RuntimeError("stubbed injection model load failure (gated, 401)")
 
 
 def _analyze_and_redact(text):
@@ -50,11 +63,20 @@ def _stub(name, **attrs):
 
 
 _stub("pii_guard")
-_stub("pii_guard.engine", analyze_and_redact=_analyze_and_redact)
+_stub(
+    "pii_guard.engine",
+    analyze_and_redact=_analyze_and_redact,
+    load_engines=_load_engines,
+)
 _stub("injection_guard")
 _stub(
     "injection_guard.model",
-    classify=lambda t: {"malicious": False, "score": 0.99, "chunks_scanned": 1},
+    classify=lambda t: {
+        "malicious": "IGNORE PREVIOUS" in t,
+        "score": 0.99,
+        "chunks_scanned": 1,
+    },
+    load_model=_load_model,
     config=types.SimpleNamespace(MODEL_ID="stub/model", MODEL_REVISION="stub-revision"),
 )
 
@@ -218,6 +240,198 @@ check(
     r.text[:120],
 )
 
+
+print("starting without a model axis (GUARDS_REQUIRE_AXES)")
+
+
+class _Records(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.records = []
+
+    def emit(self, record):
+        self.records.append(record)
+
+
+def start(env, **fails):
+    """Run the lifespan with the given environment and loader failures. Returns
+    (client context result or None, exception or None, log records)."""
+    handler = _Records()
+    main.logger.addHandler(handler)
+    load_fail.update({"pii": False, "injection": False})
+    load_fail.update(fails)
+    err = None
+    try:
+        with mock.patch.dict(os.environ, env, clear=False):
+            if "GUARDS_REQUIRE_AXES" not in env:
+                os.environ.pop("GUARDS_REQUIRE_AXES", None)
+            with TestClient(main.app, raise_server_exceptions=False) as c:
+                about = c.get("/about").json()
+                health = c.get("/health")
+                scans = [
+                    c.post("/v1/scan", json={"text": t})
+                    for t in (TEXT + "k=SECRETVALUE\n", TEXT, TEXT)
+                ]
+                secret = c.post("/v1/scan/secret", json={"text": TEXT})
+                result = (about, health, scans, secret)
+    except RuntimeError as e:  # a loader raised: the process would not start
+        err, result = e, None
+    finally:
+        main.logger.removeHandler(handler)
+        load_fail.update({"pii": False, "injection": False})
+    return result, err, handler.records
+
+
+def count(records, needle):
+    return sum(1 for r in records if needle in r.getMessage())
+
+
+# Default: the injection model cannot load (no token, gated 401); secrets and PII still serve.
+res, err, logs = start({}, injection=True)
+check(
+    "default: a missing injection model does not stop the service",
+    err is None,
+    repr(err),
+)
+if res:
+    about, health, scans, secret = res
+    check(
+        "default: /health answers",
+        health.status_code == 200 and health.json() == {"status": "ok"},
+    )
+    check(
+        "default: /about lists the injection axis as unavailable, not required, with its code",
+        about["axes"]["injection"]
+        == {
+            "state": "unavailable",
+            "required": False,
+            "reason_code": "INJECTION_UNAVAILABLE",
+        },
+        about.get("axes"),
+    )
+    check(
+        "default: /about lists secret and PII as ok, PII as required",
+        about["axes"]["secret"] == {"state": "ok"}
+        and about["axes"]["pii"]
+        == {"state": "ok", "required": True, "reason_code": None},
+        about.get("axes"),
+    )
+    check(
+        "default: /about keeps its earlier fields",
+        about["service"] == "guards-unified" and about["model"] == "stub/model",
+    )
+    f = scans[0].json()["findings"]
+    check(
+        "default: PII is still found",
+        {x["type"]: x["verdict"] for x in f}["pii"] == "found",
+        f,
+    )
+    inj = next(x for x in f if x["type"] == "injection")
+    check(
+        "default: injection answers verdict error with the stable reason code",
+        inj["verdict"] == "error" and inj["reason_code"] == ["INJECTION_UNAVAILABLE"],
+        inj,
+    )
+    check(
+        "default: the other axes still run (secret clean, pii found)",
+        {x["type"]: x["verdict"] for x in f}["secret"] in ("clean", "found"),
+    )
+    check(
+        "default: the secret-only route is unaffected",
+        secret.status_code == 200 and secret.json()["findings"][0]["type"] == "secret",
+    )
+    check(
+        "default: the log says the axis is unavailable once, however many requests follow",
+        count(logs, "injection axis unavailable") == 1,
+        count(logs, "injection axis unavailable"),
+    )
+    check(
+        "default: the redacted text still has PII removed",
+        "<PERSON>" in scans[0].json()["redacted_text"],
+    )
+
+# Strict value: the earlier behaviour exactly - the process does not start.
+res, err, logs = start({"GUARDS_REQUIRE_AXES": "pii,injection"}, injection=True)
+check(
+    "pii,injection: a missing injection model stops the process, as before",
+    err is not None and "injection model load failure" in str(err),
+    repr(err),
+)
+res, err, logs = start({"GUARDS_REQUIRE_AXES": "pii,injection"}, pii=True)
+check(
+    "pii,injection: a missing PII engine stops the process",
+    err is not None and "PII load failure" in str(err),
+    repr(err),
+)
+# A required PII engine stops the process by default too (a build defect).
+res, err, logs = start({}, pii=True)
+check(
+    "default: a PII engine that cannot load stops the process",
+    err is not None and "PII load failure" in str(err),
+    repr(err),
+)
+# Empty and unknown values fail closed to strict.
+for bad in ("", "  ", "bogus", "pii,bogus", "secret"):
+    res, err, logs = start({"GUARDS_REQUIRE_AXES": bad}, injection=True)
+    check(
+        f"GUARDS_REQUIRE_AXES={bad!r} fails closed: an unavailable injection model stops the process",
+        err is not None,
+        repr(err),
+    )
+    check(
+        f"GUARDS_REQUIRE_AXES={bad!r} logs that it was not understood",
+        count(logs, "treating every axis as required") == 1,
+        count(logs, "treating every axis as required"),
+    )
+# Only injection required: PII may be missing, injection may not.
+res, err, logs = start({"GUARDS_REQUIRE_AXES": "injection"}, pii=True)
+check(
+    "injection only: a missing PII engine does not stop the service",
+    err is None,
+    repr(err),
+)
+if res:
+    check(
+        "injection only: PII reports unavailable with its code",
+        next(x for x in res[2][0].json()["findings"] if x["type"] == "pii")[
+            "reason_code"
+        ]
+        == ["PII_UNAVAILABLE"],
+    )
+    check(
+        "injection only: the final redacted_text still builds",
+        res[2][0].status_code == 200 and "redacted_text" in res[2][0].json(),
+    )
+res, err, logs = start({"GUARDS_REQUIRE_AXES": "injection"}, injection=True)
+check(
+    "injection only: a missing injection model stops the process",
+    err is not None,
+    repr(err),
+)
+# Case and spacing are tolerated.
+res, err, logs = start({"GUARDS_REQUIRE_AXES": " PII , Injection "}, injection=True)
+check("' PII , Injection ' is read as pii,injection", err is not None, repr(err))
+# Everything loads: axes ok, nothing changes in the answers.
+res, err, logs = start({"GUARDS_REQUIRE_AXES": "pii,injection"})
+check("all axes load: the process starts", err is None, repr(err))
+if res:
+    about, _, scans, _ = res
+    check(
+        "all axes load: /about lists both ok and required",
+        about["axes"]["pii"] == {"state": "ok", "required": True, "reason_code": None}
+        and about["axes"]["injection"]
+        == {"state": "ok", "required": True, "reason_code": None},
+        about["axes"],
+    )
+    check(
+        "all axes load: no axis reports an error",
+        all(x["verdict"] != "error" for x in scans[0].json()["findings"]),
+    )
+    check(
+        "all axes load: nothing is logged as unavailable",
+        count(logs, "axis unavailable") == 0,
+    )
+main._axes.clear()
 
 print("FAIL" if failures else "ok", f"- {len(failures)} failure(s)")
 sys.exit(1 if failures else 0)

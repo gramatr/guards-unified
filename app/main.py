@@ -21,6 +21,10 @@ always present and machine-stable:
                that a finer-grained label was "too broad to be useful,"
                see injection-guard's README; do not invent sub-codes
                this classifier cannot actually distinguish)
+  - an axis whose model could not be loaded at startup (see
+    GUARDS_REQUIRE_AXES below) reports verdict "error" with the stable
+    reason code PII_UNAVAILABLE or INJECTION_UNAVAILABLE on every request,
+    and GET /about lists its state under "axes".
 
 Scope caveats carried over from every other front-end in this stack,
 restated here because this is a new entry point and the caveats don't
@@ -86,6 +90,48 @@ except FileNotFoundError:
     GUARDS_UNIFIED_VERSION = "unknown"
 
 
+# Which model axes must load for the process to start. The secret axis is
+# not in this list: it needs no model and is always there. "pii" is required
+# by default (a PII engine that cannot load is a build defect, which
+# tests/image_smoke.sh catches); "injection" is not, because its model is a
+# gated Hugging Face download that an adopter without a token cannot fetch and
+# should still get secrets and PII. A deployment that wants the earlier
+# behaviour exactly (no injection model, no service) sets
+# GUARDS_REQUIRE_AXES=pii,injection. An empty or unrecognised value fails
+# closed to that strict set: a typo must never loosen a rollout guard.
+AXES = ("pii", "injection")
+DEFAULT_REQUIRE_AXES = ("pii",)
+
+# State of the model axes, filled in by the lifespan handler:
+# {"pii": {"state": "ok"|"unavailable", "required": bool, "reason_code": str|None}, ...}
+_axes: dict = {}
+
+
+def _required_axes() -> tuple:
+    raw = os.environ.get("GUARDS_REQUIRE_AXES")
+    if raw is None:
+        return DEFAULT_REQUIRE_AXES
+    wanted = [t.strip().lower() for t in raw.split(",")]
+    if not raw.strip() or any(t not in AXES for t in wanted):
+        logger.warning(
+            "GUARDS_REQUIRE_AXES=%r is empty or names an unknown axis (known: %s); "
+            "treating every axis as required",
+            raw,
+            ",".join(AXES),
+        )
+        return AXES
+    return tuple(a for a in AXES if a in wanted)
+
+
+def _unavailable(axis: str) -> dict:
+    return {
+        "type": axis,
+        "verdict": "error",
+        "reason_code": [f"{axis.upper()}_UNAVAILABLE"],
+        "detail": {"error": "axis_unavailable"},
+    }
+
+
 def _log_metric(finding: dict) -> None:
     try:
         METRICS_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -109,8 +155,35 @@ async def _lifespan(_: FastAPI):
     logger.info(
         "Loading pii-guard (Presidio) and injection-guard (Prompt Guard 2) once at startup"
     )
-    pii_engine.load_engines()
-    injection_model.load_model()
+    required = _required_axes()
+    loaders = {"pii": pii_engine.load_engines, "injection": injection_model.load_model}
+    _axes.clear()
+    for axis in AXES:
+        try:
+            loaders[axis]()
+            _axes[axis] = {
+                "state": "ok",
+                "required": axis in required,
+                "reason_code": None,
+            }
+        except Exception:
+            if axis in required:
+                # Strict: the process does not start, exactly as before. A rollout
+                # that cannot load a required model never replaces a good pod.
+                raise
+            logger.exception(
+                "%s axis unavailable: its model could not be loaded and GUARDS_REQUIRE_AXES=%s "
+                "does not require it, so the service starts without it. Every request will "
+                "report this axis as verdict error, reason code %s_UNAVAILABLE.",
+                axis,
+                ",".join(required),
+                axis.upper(),
+            )
+            _axes[axis] = {
+                "state": "unavailable",
+                "required": False,
+                "reason_code": f"{axis.upper()}_UNAVAILABLE",
+            }
     yield
 
 
@@ -181,6 +254,7 @@ def about() -> dict:
     return {
         "service": "guards-unified",
         "version": GUARDS_UNIFIED_VERSION,
+        "axes": {"secret": {"state": "ok"}, **_axes},
         "model": injection_model.config.MODEL_ID,
         "model_revision": injection_model.config.MODEL_REVISION,
         "attribution": "Built with Llama",
@@ -260,7 +334,13 @@ def _scan_secrets(text: str) -> dict:
         Path(findings_path).unlink(missing_ok=True)
 
 
+def _axis_down(axis: str) -> bool:
+    return _axes.get(axis, {}).get("state") == "unavailable"
+
+
 def _scan_pii(text: str) -> dict:
+    if _axis_down("pii"):
+        return _unavailable("pii")
     try:
         result = pii_engine.analyze_and_redact(text)
         reason_codes = (
@@ -286,6 +366,8 @@ def _scan_pii(text: str) -> dict:
 
 
 def _classify_injection(text: str) -> dict:
+    if _axis_down("injection"):
+        return _unavailable("injection")
     try:
         result = injection_model.classify(text)
         return {
@@ -361,7 +443,11 @@ def scan(req: ScanRequest) -> dict:
     # the three findings above are already computed, and an error here leaves
     # the text redacted by the credential axis alone.
     try:
-        final_redacted_text = pii_engine.analyze_and_redact(current)["redacted_text"]
+        final_redacted_text = (
+            current
+            if _axis_down("pii")
+            else pii_engine.analyze_and_redact(current)["redacted_text"]
+        )
     except Exception:
         logger.exception("pii redaction of the combined text failed")
         final_redacted_text = current

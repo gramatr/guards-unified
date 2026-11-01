@@ -241,6 +241,17 @@ never flagged for PII or injection). The server itself has no such cap.
   and straddles a cut is not found by those rules (a plain `key=value` is never cut
   inside). `tests/scan_long_line_test.sh` pins a credential inside a 40 KB dense line
   and the time.
+- **An axis can be missing while the service is up.** When the injection model cannot be
+  loaded at startup (no `HF_TOKEN`, the gated download refused, the Hub unreachable) and
+  `GUARDS_REQUIRE_AXES` does not list `injection` (the default is `pii`), the service
+  starts without it: `/health` still says `ok`, the injection finding is verdict `error`
+  with `INJECTION_UNAVAILABLE` on every request, and `/about` lists the axis as
+  `unavailable`. A caller that reads only `malicious` and never `error` sees no injection
+  finding and no failure; that is why the plugin hooks read `error` and say so once per
+  session. The same holds for PII when `GUARDS_REQUIRE_AXES=injection`. A deployment that
+  must not run without an axis lists it (`GUARDS_REQUIRE_AXES=pii,injection` is the
+  earlier, strict behaviour). There is no background retry: a model that failed to load
+  stays unavailable until the process restarts.
 - **No gitleaks or `jq`**: the deterministic passes still run; gitleaks'
   vendor-format coverage is lost, with a log line.
 - **A secret `error` leaves secrets in `/v1/scan`'s `redacted_text`** (the

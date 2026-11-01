@@ -25,6 +25,7 @@ file. These are the defaults of the release in `VERSION`.
 | `PII_ENGINE` | `validators` | server | Which code finds the structured kinds. `validators`: Presidio supplies `PERSON` and `LOCATION` only; `CREDIT_CARD`, `IBAN_CODE`, `US_SSN`, `US_PASSPORT`, `PHONE_NUMBER`, `IP_ADDRESS` and `EMAIL_ADDRESS` come from the deterministic checks in `app/pii_guard/validators.py` (Luhn, IBAN mod 97, SSN issued ranges, structured phone numbers, parseable IPv4, email pattern, a passport number only right after the word "passport", a bare SSN only right after "SSN"). `presidio`: Presidio's own recognizers for every kind, as before; kept for one release, then removed. Any other value means `validators`. `PII_ENTITIES` still selects which kinds are reported in either mode, and a kind outside the validator set (such as `US_DRIVER_LICENSE`) is always asked of Presidio. |
 | `PII_MIN_SCORE` | `0.4` | server | Lowest Presidio score a match needs to be reported. Applies to `PERSON` and `LOCATION` (and any other Presidio kind) only; validator matches are not scored statistically. Names score about 0.85, IP addresses 0.6, phone numbers 0.4; weak pattern matches score near zero. Raise it for fewer notices, lower it for more. |
 | `PII_IGNORE_NAMES` | empty | server | Comma-separated names, matched case-insensitively and as a whole, that are never reported as a `PERSON`, added to the built-in list of about 300 software, tool and product names in `app/pii_guard/ignore_names.py` (Jenkins, Grafana, Kafka, ...). Use it for a tool or product name your team uses that is being read as a person, for example `PII_IGNORE_NAMES=Acme Deploy,Orbit`. A name written after a title (`Dr. Jenkins`) is still reported. The cost: a real person with exactly that name, mentioned alone, is not flagged. |
+| `GUARDS_REQUIRE_AXES` | `pii` | server | Comma-separated model axes that must load for the process to start: `pii`, `injection`. An axis not listed starts unavailable if its model cannot load (see [below](#guards_require_axes-what-must-load-for-the-service-to-start)). An empty value, or any name that is not `pii` or `injection`, is treated as `pii,injection` (strict) and logged. |
 | `SCAN_FULL_MAX_BYTES` | `65536` | server | Largest `text` (UTF-8 bytes) `POST /v1/scan` accepts; larger gets HTTP 413. Low on purpose: the PII and injection models cost about 0.25 s per KB and a running request cannot be cancelled. Callers that want the model axes should send a short prefix. |
 | `SCAN_SECRET_MAX_BYTES` | `1048576` | server | Largest `text` `POST /v1/scan/secret` accepts; larger gets HTTP 413. Higher because this route is cheap and callers send whole tool outputs. |
 | `SECRET_GUARD_B64` | `1` | scan.sh | `0` turns off the base64-blob pass. |
@@ -36,6 +37,30 @@ file. These are the defaults of the release in `VERSION`.
 | `SECRET_GUARD_CTX_LINE_HITS` | `150` | scan.sh | The credential-word count from which a long line is cut. |
 | `HF_TOKEN` | unset | library | Hugging Face access token, needed on first start to download the gated injection model (the account must have accepted the Llama 4 Community License). Not needed once the model is cached. |
 | `HF_HOME` | `/app/.cache/huggingface` (set in both Dockerfiles) | library | Where the model and tokenizer are cached. Mount a volume here to avoid re-downloading on every container creation. |
+
+## `GUARDS_REQUIRE_AXES`: what must load for the service to start
+
+**The default changed in the release after 0.2.18.** Before it, a failure to load either model stopped the
+process (and, under Compose, restarted it in a loop). Now only the PII engine is required by default.
+
+| Value | PII engine cannot load | Injection model cannot load |
+|---|---|---|
+| unset, or `pii` (the new default) | the process does not start | the process starts; injection is `unavailable` |
+| `pii,injection` (the earlier behaviour, exactly) | the process does not start | the process does not start |
+| `injection` | the process starts; PII is `unavailable` | the process does not start |
+| empty, or any unknown name (`pii,foo`, `secret`) | as `pii,injection`, with a warning in the log | as `pii,injection`, with a warning in the log |
+
+An unavailable axis answers every request with verdict `error` and the reason code `PII_UNAVAILABLE` or
+`INJECTION_UNAVAILABLE`, is listed under `axes` on `GET /about`, and is logged once at startup with the
+exception. The secret axis needs no model and is never affected. There is no background retry; the process must
+be restarted once the cause (a token, the Hub) is fixed.
+
+**Who should set what.** An adopter who runs the image without an `HF_TOKEN` gets secrets and PII with the
+default. A deployment whose rollout depends on the crash loop to keep the old pods serving (a rolling update
+with `maxUnavailable: 0`: the new pod never becomes ready, so the old one stays) **must set
+`GUARDS_REQUIRE_AXES=pii,injection`**: with the new default a pod whose injection model failed to load would
+become ready and replace a pod that has the axis. `INJECTION_GUARD_DEVICE=cuda` with no GPU used to stop the
+process; under the new default it logs the error and starts without the axis, unless `injection` is required.
 
 The effects of the six `SECRET_GUARD_*` switches are described in the
 [README](../README.md#switches). They are read on every scan, but since the

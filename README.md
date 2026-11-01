@@ -213,7 +213,8 @@ Each choice below is deliberate.
 | The secret scan takes longer than 15 s | **Open.** The text is left unscanned; the secret finding has verdict `error`, reason code `SECRET_SCAN_TIMEOUT` and `detail: {"error": "timeout"}`. Withholding the output instead was tried and dropped: it takes a user's whole result away to guard a rare case. |
 | `gitleaks` or `jq` missing, or gitleaks fails twice | **Open for the gitleaks layer.** The deterministic layers still run; a line is logged. |
 | The PII or injection model raises on a request | That axis reports verdict `error` with the exception message in `detail`; the other axes still run. A caller must not read one axis's `error` as "the whole request is clean". |
-| A model fails to load at startup | The process does not start. |
+| The PII engine fails to load at startup | The process does not start (it is a required axis by default; see `GUARDS_REQUIRE_AXES`). |
+| The injection model fails to load at startup (no `HF_TOKEN`, the gated download refused, the Hub unreachable) | **Changed in the release after 0.2.18.** By default the service **starts without the injection axis**: `/health` answers, secrets and PII are served, the injection finding is verdict `error` with reason code `INJECTION_UNAVAILABLE` on every request, `/about` lists the axis as `unavailable`, and the log says so once. Set `GUARDS_REQUIRE_AXES=pii,injection` to get the earlier behaviour exactly (the process does not start). A shared deployment that must not roll out without the injection axis sets that value. |
 | Writing a metrics line fails | Logged and ignored. |
 
 ## Local metrics: nothing transmitted
@@ -307,8 +308,11 @@ Hugging Face. The first start needs network access and an `HF_TOKEN=<token>`
 environment variable (the standard Hugging Face variable, read by the
 `transformers` library) for an account that has accepted the Llama 4 Community
 License, for example in the env file above. The model is cached under
-`HF_HOME` (`/app/.cache/huggingface`). If either model fails to load, the
-process does not start.
+`HF_HOME` (`/app/.cache/huggingface`). If the PII engine fails to load, the
+process does not start. If the injection model fails to load, the service
+starts without that axis (secrets and PII keep working) unless
+`GUARDS_REQUIRE_AXES` lists `injection`; see
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md#guards_require_axes-what-must-load-for-the-service-to-start).
 
 Sizing: the PII and injection models are CPU-bound without a GPU. The
 `claude-plugin-guards` Compose file runs the image with a 4 GB memory limit
