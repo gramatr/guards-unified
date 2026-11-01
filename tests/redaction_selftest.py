@@ -367,7 +367,21 @@ def main() -> int:
         # coordination#125: the exemptions for a header name key, a label and a sentence in a doc comment, and a
         # parameter typed only as a string must not hide a value. A literal, a name that does not end in a
         # credential word, an unquoted header, a digit in the word, a word alone, a singular key, a default value.
-        "config/hdr-literal-bare": (f'    headers: {{ "x-api-key": {sv} }},', [sv]),  # guards:synthetic
+        # coordination#130: a topic-style key, a token count, and tuple unpacking must not hide a value. A key that
+        # ends in a credential word, a value that is not a plain lowercase word, a word alone, a capital, a digit,
+        # a singular token key, a non-numeric count, and a literal in an unpacking all still redact.
+        "config/topic-key-valuelike": (f"gh issue create --title 'credential_audit: {sv}' --body-file b.md", [sv]),  # guards:synthetic
+        "config/credential-key-word": ("db_password: hunter and more words here", ["hunter"]),  # guards:synthetic
+        "config/env-suffix-key-passphrase": ("password_prod: correct horse battery staple", ["correct"]),  # guards:synthetic
+        "config/topic-key-word-alone": ("  credential_audit: correcthorsebatterystaple", ["correcthorsebatterystaple"]),  # guards:synthetic
+        "config/topic-key-capital": ("secret_rotation: Schedule the job every week", ["Schedule"]),  # guards:synthetic
+        "config/topic-key-digit": ("secret_rotation: schedule8 the job every week", ["schedule8"]),  # guards:synthetic
+        "config/singular-token-number": ("token: 123456789", ["123456789"]),  # guards:synthetic
+        "config/tokens-count-not-number": (f'    "total_tokens": {sv},', [sv]),  # guards:synthetic
+        "config/tokens-count-mixed": ('    "total_tokens": 12ab34cd,', ["12ab34cd"]),  # guards:synthetic
+        "config/unpack-literal": (f"    a, b, api_key = {sv}, x, y", [sv]),  # guards:synthetic
+        "config/unpack-quoted-literal": (f'    a, b, api_key = "{sv}", x, y', [sv]),  # guards:synthetic
+        "config/hdr-literal-bare":(f'    headers: {{ "x-api-key": {sv} }},', [sv]),  # guards:synthetic
         "config/hdr-word-not-credential": ('    headers: { "x-api-key": ZqxKmNpLwvTdQrst, other: 1 },', ["ZqxKmNpLwvTdQrst"]),  # guards:synthetic
         "config/hdr-unquoted-key": (f"x-api-key: {sv}", [sv]),  # guards:synthetic
         "config/hdr-quoted-literal": (f'  const cfg = {{ "x-api-key": "{sv}" }};', [sv]),  # guards:synthetic
@@ -485,7 +499,20 @@ def main() -> int:
         "benign/ref-env-name-prose": "3. SECRETS: AZURE_COG_API_KEY does not yet hold a value",  # guards:synthetic
         # coordination#125: a header name as an object key with a variable value, a label and a sentence in a doc
         # comment, and a parameter typed only as a string. All fabricated.
-        "benign/hdr-first-line": '    headers: { "api-key": apiKey, "content-type": "application/json" },',  # guards:synthetic
+        # coordination#130: a title or commit message that starts with a topic-style identifier, token counts in a
+        # usage object, and tuple unpacking from member chains. All fabricated.
+        "benign/topic-title": "gh issue create --title 'credential_audit: write an audit row on every login' --body-file b.md",  # guards:synthetic
+        "benign/topic-title-pr": "gh pr create --title 'secret_rotation: schedule the job every week' --body-file b.md",  # guards:synthetic
+        "benign/topic-commit": "git commit -m 'credential_audit: write an audit row on every login'",  # guards:synthetic
+        "benign/topic-bare-line": "token_policy: rotate every ninety days at most",  # guards:synthetic
+        "benign/tokens-count-small": '{"usage": {"prompt_tokens": 12, "completion_tokens": 7, "total_tokens": 19}}',  # guards:synthetic
+        "benign/tokens-count-four-digit": '    "usage": {"prompt_tokens": 1520, "completion_tokens": 311, "total_tokens": 1831}',  # guards:synthetic
+        "benign/tokens-count-line": '        "total_tokens": 1831,',  # guards:synthetic
+        "benign/tokens-max": '  "max_tokens": 4096,',  # guards:synthetic
+        "benign/unpack-member-chain": "    name, url, api_key = row.name, row.url, row.key",  # guards:synthetic
+        "benign/unpack-self": '    self.model, self.base_url, self.api_key = cfg["model"], cfg["url"], cfg["key"]',  # guards:synthetic
+        "benign/unpack-snake": "    a, b, auth_token = parse_config, load_url, read_key",  # guards:synthetic
+        "benign/hdr-first-line":'    headers: { "api-key": apiKey, "content-type": "application/json" },',  # guards:synthetic
         "benign/hdr-member-chain": "    headers: { 'api-key': this.apiKey },",  # guards:synthetic
         "benign/hdr-plain-variable": "  const headers = { 'x-api-key': key, Accept: 'application/json' };",  # guards:synthetic
         "benign/hdr-nested-chain": "      'x-auth-token': session.authToken",  # guards:synthetic
