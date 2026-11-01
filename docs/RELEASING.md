@@ -6,6 +6,34 @@ Publishing is fully automated from a tag push. A release is cut jointly with
 steps are a version bump in **both** repos, then a tag in each. Add the
 release to [CHANGELOG.md](../CHANGELOG.md) in the same pull request as the bump.
 
+## Release rules
+
+These are the rules for a release, stated here once. Issues and epics link to this
+section instead of repeating them.
+
+1. **The explicit go applies to the `guards-unified` tag only.** A tag push in this
+   repo publishes the image and moves the floating `:cpu` / `:gpu` tags that
+   Watchtower and the shared service follow, so a person approves it first. The
+   v0.2.13 rebuild crash-looped the analyzer and only the cluster rollout caught
+   it: signing and scanning do not replace a human gate. Ask with the evidence
+   attached: the `## [X.Y.Z]` section of `CHANGELOG.md`, the result of
+   `tests/image_smoke.sh` on the merge commit, and the shared service's `/about`
+   after the previous release. The `claude-plugin-guards` tag needs **no** go: it
+   is a label, plugin installs track `main`, and nothing is published by it.
+2. **Claims match reality (no epic-level hold).** A release does not wait for every
+   child of an epic. Before asking for the go, check that every claim in this
+   release's `CHANGELOG.md` section and in the README has a test or a live record,
+   or is named there as pending. Nothing is described in docs before the control
+   exists (`docs-consistency.test.sh` in the plugin repo enforces part of this).
+3. **A hook change follows the hot-path rule.** Before and after timings
+   (n=100, interleaved), an off switch, and a fallback. Measure on a large
+   ordinary output, not only on keyword-dense text: the first version of the
+   ssh-password rules cost 13 percent on large output and was only caught that way.
+4. **The two VERSION files must match.** The plugin repo's tag check fetches this
+   repo's `VERSION` (at the same tag if it exists, otherwise `main`) and **fails**
+   when the numbers differ or this repo cannot be reached (re-run the job). There
+   is no bot token and no automatic plugin tag: both tags are pushed by a person.
+
 ## 1. Bump VERSION and tag, in both repos
 
 1. In **each** repo (`guards-unified` and `claude-plugin-guards`), open a pull
@@ -13,11 +41,13 @@ release to [CHANGELOG.md](../CHANGELOG.md) in the same pull request as the bump.
    change prompted the release, or no code change if this is just a rebuild to
    pick up a base-image security patch). In this repo's PR, also add the
    CHANGELOG entry.
-2. Merge both to `main`. Before tagging, confirm `VERSION` is identical in
-   the two repos: neither repo's CI can see the other.
+2. Merge both to `main`, then do the claims check and ask for the go
+   (see [Release rules](#release-rules)). The plugin's tag check compares
+   `VERSION` with this repo's, so a mismatch fails there.
 3. Tag the exact merge commit in each repo, not just whatever is on `main`.
-   Tag the plugin first (its tag is only a label and its tag-check CI is
-   cheap), then this repo, whose tag push is the one that publishes:
+   Tag the plugin first (its tag is only a label, needs no go, and its tag check
+   is cheap), then this repo once the go is given; its tag push is the one that
+   publishes:
    ```
    git tag -a vX.Y.Z -m "..." <merge-commit-sha>
    git push origin vX.Y.Z
@@ -220,8 +250,8 @@ is "the highest". The rules:
   push publishes the image; the plugin repo's tag is a label (plugin installs
   track `main` and are identified by commit).
 - Both repos have a CI check that a pushed `vX.Y.Z` tag equals `VERSION` at the
-  tagged commit, so a mismatched tag fails loudly. Neither repo's CI can see the
-  other, so keeping the two numbers equal is a release-checklist step.
+  tagged commit, so a mismatched tag fails loudly. The plugin's check also
+  compares with this repo's `VERSION` (rule 4 under [Release rules](#release-rules)).
 - Plugin-only or service-only changes between releases do not get their own
   number; they ride the next joint release.
 - Because the plugin carries a vendored copy of `app/scan.sh`, every change to
