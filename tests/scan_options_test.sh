@@ -45,6 +45,8 @@ REFS=('existingSecret: "my-chart-credentials"' 'client(api_key=api_key)' 'admini
 REFS+=("    headers: { 'api-key': this.apiKey }," ' * Credentials, tokens: validate each one before use.' 'function auth(password: string): boolean {')  # guards:synthetic
 # coordination#129: expansions written for a remote shell
 REFS+=('ssh host "export DB_PASSWORD=\$(cat /home/user/.lz_pw) && run"' 'export API_TOKEN=`cat /run/secrets/api_token`')  # guards:synthetic
+# coordination#130: a topic and a sentence in a title, a token count, tuple unpacking from member chains
+REFS+=("git commit -m 'credential_audit: write an audit row on every login'" '  "total_tokens": 1831,' '    name, url, api_key = row.name, row.url, row.key')  # guards:synthetic
 for r in "${REFS[@]}"; do
   expect_same    "reference value kept by default: $r"          "$r"
   expect_changed "reference value redacted with switch off: $r" "$r" SECRET_GUARD_REFERENCE_VALUES=0
