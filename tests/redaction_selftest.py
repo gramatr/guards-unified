@@ -374,6 +374,8 @@ def main() -> int:
         "config/credential-key-word": ("db_password: hunter and more words here", ["hunter"]),  # guards:synthetic
         "config/env-suffix-key-passphrase": ("password_prod: correct horse battery staple", ["correct"]),  # guards:synthetic
         "config/topic-key-word-alone": ("  credential_audit: correcthorsebatterystaple", ["correcthorsebatterystaple"]),  # guards:synthetic
+        "config/topic-key-hyphen-alone": ("  credential_audit: correct-horse-battery-staple", ["correct-horse-battery-staple"]),  # guards:synthetic
+        "config/topic-key-hyphen-digit": ("secret_rotation: sched-8ule the job every week", ["sched-8ule"]),  # guards:synthetic
         "config/topic-key-capital": ("secret_rotation: Schedule the job every week", ["Schedule"]),  # guards:synthetic
         "config/topic-key-digit": ("secret_rotation: schedule8 the job every week", ["schedule8"]),  # guards:synthetic
         "config/singular-token-number": ("token: 123456789", ["123456789"]),  # guards:synthetic
@@ -502,6 +504,7 @@ def main() -> int:
         # coordination#130: a title or commit message that starts with a topic-style identifier, token counts in a
         # usage object, and tuple unpacking from member chains. All fabricated.
         "benign/topic-title": "gh issue create --title 'credential_audit: write an audit row on every login' --body-file b.md",  # guards:synthetic
+        "benign/topic-title-hyphen": "gh issue create --title 'credential_audit: write-once audit rows on every login' --body-file b.md",  # guards:synthetic
         "benign/topic-title-pr": "gh pr create --title 'secret_rotation: schedule the job every week' --body-file b.md",  # guards:synthetic
         "benign/topic-commit": "git commit -m 'credential_audit: write an audit row on every login'",  # guards:synthetic
         "benign/topic-bare-line": "token_policy: rotate every ninety days at most",  # guards:synthetic
