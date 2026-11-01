@@ -62,6 +62,7 @@ step "gitleaks_assets_test" bash tests/gitleaks_assets_test.sh
 step "license_test" bash tests/license_test.sh
 step "workflow_timeouts_test" bash tests/workflow_timeouts_test.sh
 step "release_plan_test" bash tests/release_plan_test.sh
+step "releasing_rules_test" bash tests/releasing_rules_test.sh
 
 echo "without gitleaks (as the CI lint job sees it)"
 step "scan_options_test" env "PATH=$SHADOW" bash tests/scan_options_test.sh

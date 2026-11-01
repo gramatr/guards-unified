@@ -77,6 +77,8 @@ jobs:
         run: bash tests/license_test.sh
       - name: Release plan and tag lists (a rehearsal can never write a bare tag)
         run: bash tests/release_plan_test.sh
+      - name: RELEASING.md states the release rules
+        run: bash tests/releasing_rules_test.sh
 
   scan-macos:
     # macOS ships bash 3.2. v0.2.9 used a bash 4 expansion in scan.sh, so on a Mac
