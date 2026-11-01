@@ -69,8 +69,10 @@ the original text otherwise (including on `error`). No PII redaction happens.
 
 ### `GET /health`
 
-Always `{"status": "ok"}`. It does not check that the models loaded (a process
-whose models failed to load never starts, so it would not answer at all).
+Always `{"status": "ok"}`. It does not report which axes work: a process whose
+**required** models failed to load never starts, so it would not answer at all, but an
+axis that is not required (by default, `injection`) may be unavailable while `/health`
+says `ok`. Read `axes` on `/about` for that.
 
 ### `GET /about`
 
@@ -78,6 +80,11 @@ whose models failed to load never starts, so it would not answer at all).
 {
   "service": "guards-unified",
   "version": "<contents of the VERSION file>",
+  "axes": {
+    "secret": {"state": "ok"},
+    "pii": {"state": "ok", "required": true, "reason_code": null},
+    "injection": {"state": "unavailable", "required": false, "reason_code": "INJECTION_UNAVAILABLE"}
+  },
   "model": "meta-llama/Llama-Prompt-Guard-2-86M",
   "model_revision": "a8ded8e697ce7c355e395a0df51f94adb4a2fd27",
   "attribution": "Built with Llama",
@@ -85,6 +92,14 @@ whose models failed to load never starts, so it would not answer at all).
   "license_url": "https://www.llama.com/llama4/license/"
 }
 ```
+
+`axes` says which detectors the running process can use. `state` is `ok` or `unavailable`; an
+axis is `unavailable` only when its model could not be loaded at startup and it is not in
+`GUARDS_REQUIRE_AXES` (see [CONFIGURATION.md](CONFIGURATION.md#guards_require_axes-what-must-load-for-the-service-to-start)),
+and then every scan answers it with verdict `error` and the `reason_code` shown. `required`
+tells whether a failure to load would have stopped the process. The secret axis needs no model
+and is always `ok`. A client that gets no `axes` field is talking to a server older than the
+release after 0.2.18, whose axes are all up if it answers at all.
 
 `version` is the `VERSION` file baked into the image (`unknown` if the file is
 missing); the value above is a placeholder, the real one comes from `GET /about`
@@ -99,7 +114,7 @@ Every finding is `{type, verdict, reason_code, detail}`.
 |---|---|
 | `type` | `secret`, `pii` or `injection`. |
 | `verdict` | `found` or `clean` for secret and PII; `malicious` or `clean` for injection; `error` for any axis whose detector raised. |
-| `reason_code` | A list of machine-stable strings when something was found, otherwise `null`. See [Reason codes](#reason-codes). On a secret `error` from a timeout it is `["SECRET_SCAN_TIMEOUT"]`; on any other `error` it is `null`. |
+| `reason_code` | A list of machine-stable strings when something was found, otherwise `null`. See [Reason codes](#reason-codes). On a secret `error` from a timeout it is `["SECRET_SCAN_TIMEOUT"]`; on an `error` from an axis left unavailable at startup it is `["PII_UNAVAILABLE"]` or `["INJECTION_UNAVAILABLE"]`; on any other `error` it is `null`. |
 | `detail` | Axis-specific, below. |
 
 ### `detail` per axis
@@ -150,7 +165,8 @@ On `error`: `{"error": "<exception message>"}`.
 | secret | `SECRET_<RuleID uppercased>` | One entry per scan.sh finding, **not de-duplicated**; hyphens in rule IDs are kept. gitleaks supplies its own rule IDs (`github-pat` becomes `SECRET_GITHUB-PAT`); the scripts' own rules are listed below. `SECRET_UNKNOWN` if a finding had no rule ID. |
 | secret (timeout) | `SECRET_SCAN_TIMEOUT` | Verdict is `error`; the text was not scanned. |
 | pii | `PII_<entity type>` | Sorted and de-duplicated. Default entity types: `EMAIL_ADDRESS`, `PHONE_NUMBER`, `US_SSN`, `US_PASSPORT`, `CREDIT_CARD`, `IBAN_CODE` (validators). `PII_ENTITIES` changes the set; `PERSON`, `LOCATION` (Presidio) and `IP_ADDRESS` (validator) are available but off by default, as are `US_DRIVER_LICENSE` and `US_BANK_NUMBER`. |
-| injection | `INJECTION_OVERRIDE_OR_JAILBREAK` | The only code. The classifier is binary and cannot distinguish sub-kinds, so none are invented. |
+| injection | `INJECTION_OVERRIDE_OR_JAILBREAK` | The only code for a finding. The classifier is binary and cannot distinguish sub-kinds, so none are invented. |
+| pii, injection (unavailable) | `PII_UNAVAILABLE`, `INJECTION_UNAVAILABLE` | Verdict is `error`: the axis's model was not loaded at startup and `GUARDS_REQUIRE_AXES` did not require it. Stable on every request until the process is restarted. A client that treats `error` as "not checked" is right. |
 
 Rule IDs from `scan.sh` itself (reported alongside gitleaks' own):
 
@@ -226,8 +242,10 @@ with the original text standing in for a redaction.
 | Secret scan exceeds 15 s | `200`; secret finding verdict `error`, `SECRET_SCAN_TIMEOUT`. Fails open. |
 | Secret scan raises | `200`; secret finding verdict `error`, `reason_code` null, message in `detail.error`. |
 | PII or injection detector raises on the first call | `200`; that finding has verdict `error`, the other axes still report. |
+| An axis was left unavailable at startup (see `GUARDS_REQUIRE_AXES`) | `200`; that finding has verdict `error`, `reason_code` `["PII_UNAVAILABLE"]` or `["INJECTION_UNAVAILABLE"]` and `detail: {"error": "axis_unavailable"}`, on every request; the other axes still report; `redacted_text` leaves out that axis's redaction. |
 | PII redaction raises in the final pass of `/v1/scan` | `200`. The error is logged and `redacted_text` is the text as redacted by the secret axis. (Before the request-limit fix this was an HTTP 500.) |
-| A model failed to load | The process does not start. |
+| The PII engine, or the injection model when `GUARDS_REQUIRE_AXES` lists it, failed to load | The process does not start. |
+| The injection model failed to load and `GUARDS_REQUIRE_AXES` does not list it (the default) | The process starts; see the row above for what each request returns. |
 
 The size-cap, secret-error and PII-fault rows are pinned by
 `tests/api_contract_test.py` (models stubbed). The rest is read from the code;
