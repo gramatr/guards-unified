@@ -21,6 +21,7 @@ permissions:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -29,6 +30,9 @@ jobs:
       - run: pip install ruff==0.17.1 fastapi httpx pydantic
       - run: ruff check app/ tests/
       - run: ruff format --check app/ tests/
+      - name: Every job has a timeout
+        # The default is 360 minutes; a hung step held a release for 35+ minutes (2026-11-01).
+        run: bash tests/workflow_timeouts_test.sh
       - name: Dockerfile pins
         # No floating tags for external images (uv, base images).
         run: bash tests/dockerfile_pins_test.sh
@@ -102,6 +106,7 @@ jobs:
 
   cve-scan-source:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Trivy filesystem scan (Dockerfiles, app source)
@@ -118,6 +123,7 @@ jobs:
 
   cve-scan-image:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build CPU image
@@ -144,6 +150,7 @@ jobs:
     # the text unchanged. Synthetic keys are
     # generated at run time; nothing real is involved.
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build CPU image
@@ -185,6 +192,7 @@ jobs:
     needs: [lint, cve-scan-source, cve-scan-image, redaction-selftest]
     if: always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Open an issue — don't rely on anyone noticing the red check
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0

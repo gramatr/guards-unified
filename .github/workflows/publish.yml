@@ -58,6 +58,7 @@ jobs:
     # takes its tag from here, and the tag lists come from tests/release_tags.sh, so a rehearsal
     # cannot write a bare :cpu/:gpu tag (tests/release_plan_test.sh pins that).
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       mode: ${{ steps.plan.outputs.mode }}
       tag: ${{ steps.plan.outputs.tag }}
@@ -86,6 +87,7 @@ jobs:
     # commit happened to be on main when someone ran `git tag`. Fails
     # loudly rather than silently publishing a mismatched version.
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Tag vs VERSION file
@@ -127,6 +129,7 @@ jobs:
     if: needs.plan.outputs.mode != 'recovery'
     needs: [plan, verify-tag-matches-version]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       id-token: write       # Sigstore keyless signing of the provenance
@@ -157,6 +160,7 @@ jobs:
     if: needs.plan.outputs.mode != 'recovery'
     needs: [plan, verify-tag-matches-version]
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
       matrix:
         variant: [cpu, gpu]
@@ -237,6 +241,7 @@ jobs:
     # header comment. Native build, no QEMU: this box has the real
     # aarch64 + GPU hardware.
     runs-on: [self-hosted, ARM64, local-gpu]
+    timeout-minutes: 45
     strategy:
       matrix:
         variant: [cpu, gpu]
@@ -300,6 +305,7 @@ jobs:
     if: always() && needs.plan.result == 'success' && (needs.plan.outputs.mode == 'recovery' || (needs.build-amd64.result == 'success' && needs.build-arm64.result == 'success'))
     needs: [plan, build-amd64, build-arm64]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
@@ -397,6 +403,7 @@ jobs:
     if: needs.plan.outputs.mode != 'recovery'
     needs: [plan, merge-multiarch, gitleaks-assets]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
       packages: read
