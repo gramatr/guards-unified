@@ -2,7 +2,7 @@
 
 Covers both packages of the guards line, `guards-unified` (the server image,
 this repository) and [`claude-plugin-guards`](https://github.com/gramatr/claude-plugin-guards)
-(the Claude Code plugin), from the first tagged release to v0.2.17.
+(the Claude Code plugin), from the first tagged release to v0.2.18.
 
 ## How the versions work
 
@@ -31,6 +31,17 @@ What was hardened, what was loosened and why is in
 [docs/LIMITS.md](docs/LIMITS.md).
 
 ---
+
+## [0.2.18] - 2026-11-01
+
+### guards-unified
+
+- Fixed: three more shapes the publish guard denied with no rewording that helped, each forcing the maintainer to run the command outside auto mode (coordination #130). A compound key whose credential word is not its last segment (`credential_audit`, `secret_rotation`, `token_policy`) followed by a plain lowercase word, as in an issue title or a commit message; a key ending in `tokens` (`prompt_tokens`, `max_tokens`) with an all-digit value; and tuple unpacking, a comma-separated list of targets before the equals sign. A key whose last segment is a credential word, a value word or an environment name stays strict, and a value-like string after the same keys still redacts. These sit under `SECRET_GUARD_REFERENCE_VALUES=0` (#93).
+
+### claude-plugin-guards
+
+- Added: a temporary off switch for every hook, run by the person. `guards-switch off [TIME]` (with the `!` prefix) makes every hook do nothing until the time has passed (default one hour, maximum 24), `guards-switch on` ends it sooner, and `GUARDS_DISABLE=1` does the same for a whole session. It turns itself back on, a flag that cannot be read counts as on, `guards_status` reports it, and the publish guard refuses an agent command that names the switch. While it is on nothing is scanned or redacted in either direction; `docs/TRADEOFFS.md` says so (#165).
+- Changed: the vendored `scan.sh` carries the server change above (#166).
 
 ## [0.2.17] - 2026-10-30
 
