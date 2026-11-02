@@ -2,7 +2,7 @@
 
 Covers both packages of the guards line, `guards-unified` (the server image,
 this repository) and [`claude-plugin-guards`](https://github.com/gramatr/claude-plugin-guards)
-(the Claude Code plugin), from the first tagged release to v0.2.18.
+(the Claude Code plugin), from the first tagged release to v0.2.19.
 
 ## How the versions work
 
@@ -31,6 +31,27 @@ What was hardened, what was loosened and why is in
 [docs/LIMITS.md](docs/LIMITS.md).
 
 ---
+
+## [0.2.19] - 2026-11-02
+
+**Before the shared service takes this image:** the default of `GUARDS_REQUIRE_AXES` changes (see below). Set `GUARDS_REQUIRE_AXES=pii,injection` on the shared deployment first; setting it on 0.2.18 is harmless. The request text is in guards-unified#98.
+
+### guards-unified
+
+- Changed: the service starts without the injection model. A new setting, `GUARDS_REQUIRE_AXES` (comma list of `pii`, `injection`), names the model axes that must load for the process to start. The default is `pii`: a PII engine that cannot load still stops the process, but a missing, gated or unreachable injection model no longer does, so an adopter without a Hugging Face token gets secrets and PII (coordination #93). `pii,injection` is the previous behaviour exactly. An empty or unknown value fails closed to `pii,injection` and is logged. An axis left unavailable answers every scan with `verdict: "error"` and reason code `PII_UNAVAILABLE` or `INJECTION_UNAVAILABLE`, and `GET /about` lists each axis as `{state, required, reason_code}`. Scan latency is unchanged within noise (#98).
+- Fixed: a hyphenated first word after a topic key is still a sentence, so a title like `credential_audit: write-once audit rows on every login` is no longer redacted. A hyphenated passphrase with nothing after it, and a hyphenated word holding a digit, still redact. Under `SECRET_GUARD_REFERENCE_VALUES=0` (#96).
+- Changed: every CI job now sets `timeout-minutes` (#95); `docs/RELEASING.md` states the release rules once, and the explicit go covers the guards-unified tag only (#97).
+
+### claude-plugin-guards
+
+- Fixed (protection): a heredoc that writes data under an unquoted delimiter is no longer skipped when its body holds a command substitution, a backtick or `${`; `cat > f <<EOF` with a substitution that reads a key was allowed since v0.2.11 and is denied again (coordination #135, #169).
+- Fixed (protection): `sendmessage-guard` and the older path of `combined-hook` treated a service answer whose secret axis said `error` as a clean scan and sent the message unscanned; they now fall back to the local secret scan (coordination #136, #170).
+- Fixed (protection): the credential-file guard looked at only the first 60 words of a Bash command, so a key after the 60th word was not seen (#91). Words past the 60th now pass a name prefilter, and the cap is 300 checked words; past it a command with a reader word asks (default, acceptEdits, plan) or is denied (auto, bypassPermissions, dontAsk, or `GUARDS_CRED_ASK=0`), and the reason says to split it. A command of 200 path-like words now takes about 0.7 s, where it took 0.26 s. `GUARDS_CRED_PREFILTER=0` restores the old loop (#175).
+- Fixed: the publish guard's matcher is anchored to the GitHub MCP server segment, which also routes the claude.ai connector `mcp__claude_ai_GitHub__*` that never matched before because of its capital letters (#132, #172). `check_before_publish` says a body-only check leaves the title and labels unchecked (#131, #173).
+- Changed: a `secret-lead-in` block now names the `--title` or `-m` argument that matched and suggests the reword and the approve-once command; each block adds one counts-only line to `denies.log` (`GUARDS_PUBLISH_ARG_HINT=0`, `GUARDS_PUBLISH_DENY_LOG=0`). A blocked publish takes about 335 ms longer per title or message argument; the allow path is unchanged (#176).
+- Added: the hooks say once per session when the guards service is degraded or a model axis is unavailable, and once when it is back; they share one record of how the service is failing (`GUARDS_DEGRADED_NOTE=0` turns the note off). A breaker stops hooks waiting out the connect timeout on a blackholed service for 30 s (`GUARDS_BREAKER_SECS=0` turns it off): a Bash call to a blackholed address went from about 1.4 s to 0.4 s, and a prompt from 3.0 s to 0.03 s; refused and DNS failures cost about a millisecond and are unchanged. `guards_status` reads which axes the service started without (#182, #183, #184, #185).
+- Added: `guards/bin/approvals-report.sh`, a read-only counts report over the approve-once store and `denies.log` (#181). The plugin tag check fails when the tag, this repository's `VERSION` or guards-unified's `VERSION` disagree (#178). Every CI job sets `timeout-minutes` (#168); `hook-deadlines.test.sh` cannot wait unbounded (#174).
+- Changed: the vendored `scan.sh` carries the hyphen fix above (#171).
 
 ## [0.2.18] - 2026-11-01
 
