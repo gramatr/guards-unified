@@ -45,6 +45,10 @@ jobs:
           python3 tests/validators_test.py
           python3 tests/pii_merge_test.py
           python3 tests/filters_test.py
+      - name: Azure Prompt Shields backend tests
+        # The backend against a local stand-in for the API: windows, overlap, parallelism and
+        # every failure mode. No network beyond loopback, no key, no model.
+        run: python3 tests/azure_shields_test.py
       - name: API contract tests
         # The two models are stubbed (they are gated and heavy): this pins the
         # request size limits and what a failing axis does to the response.
