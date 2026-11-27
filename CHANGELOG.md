@@ -32,10 +32,13 @@ What was hardened, what was loosened and why is in
 
 ---
 
-## [Unreleased]
+## [0.2.20] - 2026-11-27
+
+**What this changes for the shared service:** nothing, until it is switched on. The new injection backend is off by default (`INJECTION_GUARD_BACKEND` unset means the local model, as before). The deployment in `n90-co/prod-argocd-v2` already carries the three settings and the key (#4611) and ignores them on v0.2.19; it turns the backend on when the image digest moves to this release. **When it is on, every window of every scanned text goes to the configured Azure endpoint** (docs/THREAT-MODEL.md T7).
 
 ### guards-unified
 
+- **Fixed (build):** the gitleaks binary is built with Go 1.26.11 (the `golang:1.26-bookworm` digest moved from 1.26.10), which clears CVE-2026-97054 (MEDIUM, standard library) that failed the required `cve-scan-image` check on main (#104, issue #100). The four standalone gitleaks binary hashes in `docs/gitleaks-assets.sha256` change with it.
 - **New (opt-in):** `INJECTION_GUARD_BACKEND=azure_prompt_shields` answers the injection axis with Azure AI Content Safety Prompt Shields instead of the local model. The default is unchanged (`local`). Long text is cut into windows of at most 9,000 characters with 500 repeated, asked 8 at a time, and any one flagged window flags the text; any failure is verdict `error`. **Every window of the text goes to the configured Azure endpoint**; see docs/THREAT-MODEL.md T7 before switching it on. Settings: `INJECTION_GUARD_AZURE_ENDPOINT`, `_KEY`, `_API_VERSION`, `_WINDOW_CHARS`, `_OVERLAP_CHARS`, `_CONCURRENCY`, `_TIMEOUT_SECONDS`, `_TOTAL_SECONDS`.
 - **New:** `POST /v1/scan/injection`, the injection axis alone, capped by `SCAN_INJECTION_MAX_BYTES`. It exists so a caller that only needs the instruction check does not run the secret scan and the PII engine, and does not hit the 65,536-byte cap of `/v1/scan` (with the Azure backend the default cap is 1 MiB).
 - `GET /about` gains `injection_backend`.
