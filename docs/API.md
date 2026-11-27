@@ -9,6 +9,7 @@ authentication**; bind it to loopback (see
 |---|---|---|
 | `/v1/scan` | POST | Secret, PII and injection axes. |
 | `/v1/scan/secret` | POST | The secret axis alone. |
+| `/v1/scan/injection` | POST | The injection axis alone. |
 | `/health` | GET | Liveness. |
 | `/about` | GET | Version and licence attribution. |
 
@@ -66,6 +67,21 @@ The secret axis alone, same finding shape.
 
 `redacted_text` is the secret-redacted text when the verdict is `found`, and
 the original text otherwise (including on `error`). No PII redaction happens.
+
+### `POST /v1/scan/injection`
+
+The injection axis alone, same finding shape, one finding. No secret scan and no PII engine run, so a caller
+that only needs the instruction check (for example a file scanner judging the text of a document) does not pay
+for them. Capped by `SCAN_INJECTION_MAX_BYTES` (413 above it).
+
+```json
+{"findings": [{"type": "injection", "verdict": "clean", "...": "..."}]}
+```
+
+A verdict of `error` means no verdict (the backend was unreachable, refused the text, or answered something
+unexpected); it is never to be read as clean. With the `azure_prompt_shields` backend the whole text is sent in
+windows (see [CONFIGURATION.md](CONFIGURATION.md)), so a long file is cheap; with the local model it costs about
+0.25 s per KB.
 
 ### `GET /health`
 

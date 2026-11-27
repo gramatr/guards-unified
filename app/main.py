@@ -150,13 +150,42 @@ def _log_metric(finding: dict) -> None:
         logger.exception("failed to write local metrics (non-fatal)")
 
 
+# Which detector answers the injection axis: "local" (default; the Llama Prompt Guard 2 model in this process) or "azure_prompt_shields" (Azure AI Content Safety Prompt Shields; every
+# window of the text is sent to the configured Azure endpoint, see docs/THREAT-MODEL.md). Any other value makes the injection axis unavailable (it never falls back to local silently).
+INJECTION_BACKEND = (
+    os.environ.get("INJECTION_GUARD_BACKEND", "local").strip().lower() or "local"
+)
+KNOWN_INJECTION_BACKENDS = ("local", "azure_prompt_shields")
+
+
+def _load_injection() -> None:
+    if INJECTION_BACKEND == "local":
+        injection_model.load_model()
+    elif INJECTION_BACKEND == "azure_prompt_shields":
+        from injection_guard import azure_shields
+
+        azure_shields.load()
+    else:
+        raise RuntimeError(
+            f"INJECTION_GUARD_BACKEND={INJECTION_BACKEND!r} is not one of {', '.join(KNOWN_INJECTION_BACKENDS)}"
+        )
+
+
+def _injection_classify(text: str) -> dict:
+    if INJECTION_BACKEND == "azure_prompt_shields":
+        from injection_guard import azure_shields
+
+        return azure_shields.classify(text)
+    return injection_model.classify(text)
+
+
 @asynccontextmanager
 async def _lifespan(_: FastAPI):
     logger.info(
         "Loading pii-guard (Presidio) and injection-guard (Prompt Guard 2) once at startup"
     )
     required = _required_axes()
-    loaders = {"pii": pii_engine.load_engines, "injection": injection_model.load_model}
+    loaders = {"pii": pii_engine.load_engines, "injection": _load_injection}
     _axes.clear()
     for axis in AXES:
         try:
@@ -221,6 +250,12 @@ def _env_int(name: str, default: int) -> int:
 # a short prefix, while the credential scan is cheap and reads whole outputs.
 SCAN_FULL_MAX_BYTES = _env_int("SCAN_FULL_MAX_BYTES", 65536)
 SCAN_SECRET_MAX_BYTES = _env_int("SCAN_SECRET_MAX_BYTES", 1048576)
+# The injection-only route. With the Azure backend the text is cut into windows and asked a few at a time, so a whole file is cheap; with the local model it costs about 0.25 s per KB and a
+# running request cannot be cancelled, so the default stays at the full route's cap.
+SCAN_INJECTION_MAX_BYTES = _env_int(
+    "SCAN_INJECTION_MAX_BYTES",
+    1048576 if INJECTION_BACKEND == "azure_prompt_shields" else SCAN_FULL_MAX_BYTES,
+)
 
 
 def _enforce_size(text: str, limit: int, env_name: str) -> None:
@@ -255,6 +290,7 @@ def about() -> dict:
         "service": "guards-unified",
         "version": GUARDS_UNIFIED_VERSION,
         "axes": {"secret": {"state": "ok"}, **_axes},
+        "injection_backend": INJECTION_BACKEND,
         "model": injection_model.config.MODEL_ID,
         "model_revision": injection_model.config.MODEL_REVISION,
         "attribution": "Built with Llama",
@@ -369,7 +405,7 @@ def _classify_injection(text: str) -> dict:
     if _axis_down("injection"):
         return _unavailable("injection")
     try:
-        result = injection_model.classify(text)
+        result = _injection_classify(text)
         return {
             "type": "injection",
             "verdict": "malicious" if result["malicious"] else "clean",
@@ -410,6 +446,18 @@ def scan_secret(req: ScanRequest) -> dict:
         else req.text
     )
     return {"findings": [secret_result], "redacted_text": redacted}
+
+
+@app.post("/v1/scan/injection")
+def scan_injection(req: ScanRequest) -> dict:
+    """The injection axis alone: no secret scan and no PII engine, so a caller that only needs
+    the instruction check (a file scanner judging extracted document text) does not pay for them.
+    Same finding shape as /v1/scan, with one finding. Bodies over SCAN_INJECTION_MAX_BYTES are
+    refused with 413. A verdict of "error" means no verdict; it is never to be read as clean."""
+    _enforce_size(req.text, SCAN_INJECTION_MAX_BYTES, "SCAN_INJECTION_MAX_BYTES")
+    result = _classify_injection(req.text)
+    _log_metric(result)
+    return {"findings": [result]}
 
 
 @app.post("/v1/scan")
