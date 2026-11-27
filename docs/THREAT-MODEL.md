@@ -215,6 +215,20 @@ Each row: the control that exists, its documented limit, and the evidence.
   `hooks/combined-hook.sh`. The 6% figure is recorded in `app/main.py` and the
   README; the evaluation itself is not in this repository.
 
+**With `INJECTION_GUARD_BACKEND=azure_prompt_shields` (opt-in, default off).** The injection axis is answered
+by Azure AI Content Safety Prompt Shields instead of the local model. What changes:
+
+- **Data leaves the process.** Every window of the scanned text (up to 9,000 characters each, repeated overlap
+  included) is sent over HTTPS to the configured Azure resource. The operator chooses that resource and is its
+  owner; this repository sends nothing anywhere unless the backend is switched on. Microsoft's handling of
+  that data is governed by the terms of the resource, which this project has not reviewed.
+- **Detection.** Not the same detector, so not the same 6% figure. On 28 short synthetic texts (the labelled set
+  in agentic-raven `harnesses/hermes/tools/prompt_injection_eval.py`), measured 2026-11-27 on a test resource: Prompt
+  Shields flagged 12 of 16 attacks and 0 of 12 ordinary texts, the local model 8 of 16 and 1 of 12. That is a
+  small sample and a direction, not a guarantee; there is no InjecAgent run for this backend.
+- **Failure.** Any failure (no key, a refusal, a timeout, an unexpected answer) is verdict `error`, never clean.
+- **Evidence.** `app/injection_guard/azure_shields.py`, `tests/azure_shields_test.py`.
+
 ### T8. Hostile output crafted to evade detection
 
 - **Control.** Matching ignores ANSI colour codes and zero-width characters and

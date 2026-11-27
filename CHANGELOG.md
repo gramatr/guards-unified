@@ -32,6 +32,15 @@ What was hardened, what was loosened and why is in
 
 ---
 
+## [Unreleased]
+
+### guards-unified
+
+- **New (opt-in):** `INJECTION_GUARD_BACKEND=azure_prompt_shields` answers the injection axis with Azure AI Content Safety Prompt Shields instead of the local model. The default is unchanged (`local`). Long text is cut into windows of at most 9,000 characters with 500 repeated, asked 8 at a time, and any one flagged window flags the text; any failure is verdict `error`. **Every window of the text goes to the configured Azure endpoint**; see docs/THREAT-MODEL.md T7 before switching it on. Settings: `INJECTION_GUARD_AZURE_ENDPOINT`, `_KEY`, `_API_VERSION`, `_WINDOW_CHARS`, `_OVERLAP_CHARS`, `_CONCURRENCY`, `_TIMEOUT_SECONDS`, `_TOTAL_SECONDS`.
+- **New:** `POST /v1/scan/injection`, the injection axis alone, capped by `SCAN_INJECTION_MAX_BYTES`. It exists so a caller that only needs the instruction check does not run the secret scan and the PII engine, and does not hit the 65,536-byte cap of `/v1/scan` (with the Azure backend the default cap is 1 MiB).
+- `GET /about` gains `injection_backend`.
+- Tests: `tests/azure_shields_test.py` (new, against a local stand-in for the API) and additions to `tests/api_contract_test.py`. Not tested: a live call to Azure (run by hand on 2026-11-27 against a test resource), and a production resource (none exists yet).
+
 ## [0.2.19] - 2026-11-02
 
 **Before the shared service takes this image:** the default of `GUARDS_REQUIRE_AXES` changes (see below). Set `GUARDS_REQUIRE_AXES=pii,injection` on the shared deployment first; setting it on 0.2.18 is harmless. The request text is in guards-unified#98.
