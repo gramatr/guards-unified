@@ -217,6 +217,45 @@ Each choice below is deliberate.
 | The injection model fails to load at startup (no `HF_TOKEN`, the gated download refused, the Hub unreachable) | **Changed in the release after 0.2.18.** By default the service **starts without the injection axis**: `/health` answers, secrets and PII are served, the injection finding is verdict `error` with reason code `INJECTION_UNAVAILABLE` on every request, `/about` lists the axis as `unavailable`, and the log says so once. Set `GUARDS_REQUIRE_AXES=pii,injection` to get the earlier behaviour exactly (the process does not start). A shared deployment that must not roll out without the injection axis sets that value. |
 | Writing a metrics line fails | Logged and ignored. |
 
+## Injection backend: local model or Azure Prompt Shields
+
+The injection axis has two backends. The local Llama Prompt Guard 2 model is
+CPU-bound (~1,500 chars/sec) and the full-scan route refuses text over
+`SCAN_FULL_MAX_BYTES` (64 KB); a large document is refused rather than scanned.
+Azure AI Content Safety **Prompt Shields** windows a large document into ≤9,000-
+character pieces (its hard limit is 10,000 characters of documents per request),
+classifies the windows in parallel, and so handles inputs the local model cannot.
+
+`INJECTION_GUARD_BACKEND` selects the backend. It was validated on only a small
+synthetic set, so Shields does **not** silently replace the local verdict:
+
+| `INJECTION_GUARD_BACKEND` | Behaviour |
+|---|---|
+| `local` (default) | Only the local model. Nothing changes. |
+| `shields` | Prompt Shields is the authoritative injection verdict. The 64 KB full-route ceiling no longer refuses the injection axis (the route stays bounded at `SCAN_FULL_SHIELDS_MAX_BYTES`, default 4 MB). |
+| `fallback` | Local model is authoritative, but Shields handles anything the local model cannot: input past its ceiling, the model unavailable, or a local error. |
+| `parallel` | Both run; the local model stays authoritative and Shields runs alongside for comparison. Divergences are logged, never acted on. For input the local model cannot take, Shields carries the decision alone. |
+
+Strict contract, same as every other axis: a Shields call that errors, times
+out, or returns anything but an explicit clean verdict is reported as verdict
+`error` — **never** silently treated as clean.
+
+Any Shields backend needs a configured endpoint and key:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `INJECTION_GUARD_SHIELDS_ENDPOINT` | unset | Azure Content Safety resource URL, e.g. `https://<resource>.cognitiveservices.azure.com`. Unset → the Shields backends fail explicit (never clean). |
+| `INJECTION_GUARD_SHIELDS_API_KEY` | unset | Resource key, from the environment only (ESO-synced secret in the cluster). Never hardcoded. |
+| `INJECTION_GUARD_SHIELDS_API_VERSION` | `2024-09-01` | Prompt Shields API version. |
+| `INJECTION_GUARD_SHIELDS_WINDOW_CHARS` | `9000` | Window size, under the 10,000-char request limit. |
+| `INJECTION_GUARD_SHIELDS_WINDOW_OVERLAP` | `200` | Overlap so an injection phrase split at a boundary is still seen whole. |
+| `INJECTION_GUARD_SHIELDS_MAX_CONCURRENCY` | `8` | Bounded parallel calls per request. |
+| `INJECTION_GUARD_SHIELDS_TIMEOUT_SECONDS` | `10` | Per-request HTTP timeout. |
+
+Production needs its own Azure Content Safety resource and credentials — not a
+test resource. Provisioning that resource (and the Bitwarden secret +
+ExternalSecret that deliver the key) is still an open decision; see issue #101.
+
 ## Local metrics: nothing transmitted
 
 Both `POST /v1/scan` and `POST /v1/scan/secret` append one JSON line per

@@ -80,6 +80,30 @@ _stub(
     config=types.SimpleNamespace(MODEL_ID="stub/model", MODEL_REVISION="stub-revision"),
 )
 
+# The Prompt Shields backend makes a live HTTP call, so these contract tests keep
+# the default "local" backend and stub the module out. Dedicated coverage of the
+# windowing and strict-contract behaviour lives in tests/prompt_shields_test.py.
+shields_backend = {"name": "local"}
+_stub(
+    "injection_guard.prompt_shields",
+    active_backend=lambda: shields_backend["name"],
+    shields_handles_injection=lambda: (
+        shields_backend["name"] in ("shields", "fallback", "parallel")
+    ),
+    classify=lambda t: {
+        "malicious": False,
+        "label": "BENIGN",
+        "score": 0.0,
+        "chunks_scanned": 1,
+    },
+)
+# `from injection_guard import prompt_shields` reads the attribute off the parent
+# package, which a bare sys.modules entry does not set — wire it explicitly.
+sys.modules["injection_guard"].prompt_shields = sys.modules[
+    "injection_guard.prompt_shields"
+]
+sys.modules["injection_guard"].model = sys.modules["injection_guard.model"]
+
 main = importlib.import_module("main")  # after the stubs are in place
 
 client = TestClient(main.app, raise_server_exceptions=False)
@@ -432,6 +456,47 @@ if res:
         count(logs, "axis unavailable") == 0,
     )
 main._axes.clear()
+
+print("Prompt Shields backend (injection)")
+# With Shields active the full route must stop refusing large bodies at
+# SCAN_FULL_MAX_BYTES — that ceiling was the prod incident (issue #101).
+shields_backend["name"] = "shields"
+try:
+    r = client.post("/v1/scan", json={"text": "x" * 3000})
+    check(
+        "shields backend: full route accepts a body over SCAN_FULL_MAX_BYTES",
+        r.status_code == 200,
+        r.status_code,
+    )
+    if r.status_code == 200:
+        inj = next(x for x in r.json()["findings"] if x["type"] == "injection")
+        check(
+            "shields backend: injection verdict comes from Shields, tagged as such",
+            inj["verdict"] == "clean" and inj["detail"].get("backend") == "shields",
+            inj,
+        )
+    # A Shields call that raises must surface as a non-clean error, never clean.
+    with mock.patch.object(
+        main.prompt_shields,
+        "classify",
+        lambda t: (_ for _ in ()).throw(RuntimeError("shields unreachable")),
+    ):
+        r = client.post("/v1/scan", json={"text": TEXT})
+    inj = next(x for x in r.json()["findings"] if x["type"] == "injection")
+    check(
+        "shields backend: a failed Shields call is verdict error, not clean",
+        r.status_code == 200 and inj["verdict"] == "error",
+        inj,
+    )
+finally:
+    shields_backend["name"] = "local"
+# Back on local, the SCAN_FULL_MAX_BYTES ceiling applies again.
+r = client.post("/v1/scan", json={"text": "x" * 3000})
+check(
+    "local backend: the full route still refuses a body over SCAN_FULL_MAX_BYTES",
+    r.status_code == 413,
+    r.status_code,
+)
 
 print("FAIL" if failures else "ok", f"- {len(failures)} failure(s)")
 sys.exit(1 if failures else 0)

@@ -53,6 +53,7 @@ from pathlib import Path
 import injection_guard.model as injection_model
 import pii_guard.engine as pii_engine
 from fastapi import FastAPI, HTTPException
+from injection_guard import prompt_shields
 from pydantic import BaseModel, field_validator
 
 logging.basicConfig(level=logging.INFO)
@@ -222,6 +223,14 @@ def _env_int(name: str, default: int) -> int:
 SCAN_FULL_MAX_BYTES = _env_int("SCAN_FULL_MAX_BYTES", 65536)
 SCAN_SECRET_MAX_BYTES = _env_int("SCAN_SECRET_MAX_BYTES", 1048576)
 
+# When Prompt Shields is the active injection backend it windows large documents
+# itself, so the 64 KB full-route ceiling — which existed only because the local
+# CPU model caps out ~1,500 chars/sec — no longer needs to refuse the injection
+# axis (issue #101: a 210,909-char workbook was refused twice in prod). The route
+# stays bounded (an unbounded body is still a resource risk, and PII/secret run
+# on the same text), but at a much higher limit than the local-model ceiling.
+SCAN_FULL_SHIELDS_MAX_BYTES = _env_int("SCAN_FULL_SHIELDS_MAX_BYTES", 4194304)
+
 
 def _enforce_size(text: str, limit: int, env_name: str) -> None:
     size = len(text.encode("utf-8", "replace"))
@@ -365,21 +374,95 @@ def _scan_pii(text: str) -> dict:
         }
 
 
+def _local_exceeds_ceiling(text: str) -> bool:
+    """The local CPU model caps out around SCAN_FULL_MAX_BYTES; past it the model
+    is exactly what the fallback/parallel backends route around to Prompt Shields."""
+    return len(text.encode("utf-8", "replace")) > SCAN_FULL_MAX_BYTES
+
+
+def _run_injection_backend(text: str, backend: str) -> dict:
+    """Produce the raw classifier dict for the active injection backend, tagged
+    with the `backend` that actually generated the verdict.
+
+    Exceptions propagate to the caller, which maps them to a non-clean "error"
+    verdict — Prompt Shields never silently resolves to "clean" on failure. The
+    local model being unavailable (gated download absent) is NOT fatal for a
+    Shields-capable backend: Shields carries the decision instead."""
+    local_down = _axis_down("injection")
+
+    if backend == "shields":
+        return {**prompt_shields.classify(text), "backend": "shields"}
+
+    if backend == "fallback":
+        # Local is authoritative, but Shields handles anything the local model
+        # cannot: input past its ceiling, the model unavailable, or a local error.
+        if local_down or _local_exceeds_ceiling(text):
+            return {**prompt_shields.classify(text), "backend": "shields"}
+        try:
+            return {**injection_model.classify(text), "backend": "local"}
+        except Exception:
+            logger.warning(
+                "local injection model failed; falling back to Prompt Shields",
+                exc_info=True,
+            )
+            return {**prompt_shields.classify(text), "backend": "shields"}
+
+    if backend == "parallel":
+        # Validation mode: local stays authoritative, Shields runs alongside for
+        # comparison and divergences are logged, never acted on. Input the local
+        # model cannot take (oversized, or unavailable) is the one case Shields
+        # must carry alone.
+        if local_down or _local_exceeds_ceiling(text):
+            result = {**prompt_shields.classify(text), "backend": "shields"}
+            result["local_skipped"] = (
+                "model unavailable" if local_down else "input exceeds local ceiling"
+            )
+            return result
+        local_result = {**injection_model.classify(text), "backend": "local"}
+        try:
+            shields_result = prompt_shields.classify(text)
+            local_result["shields_comparison"] = shields_result["malicious"]
+            if shields_result["malicious"] != local_result["malicious"]:
+                logger.warning(
+                    "injection backend divergence: local=%s shields=%s",
+                    local_result["malicious"],
+                    shields_result["malicious"],
+                )
+        except Exception:
+            # The comparison is advisory in parallel mode; a Shields failure must
+            # not degrade the authoritative local verdict.
+            logger.warning(
+                "Prompt Shields comparison call failed (parallel mode)", exc_info=True
+            )
+            local_result["shields_comparison"] = "error"
+        return local_result
+
+    return {**injection_model.classify(text), "backend": "local"}
+
+
 def _classify_injection(text: str) -> dict:
-    if _axis_down("injection"):
+    backend = prompt_shields.active_backend()
+    # Only the local-only backend is blocked by an unavailable local model; the
+    # Shields-capable backends route around it inside _run_injection_backend.
+    if backend == "local" and _axis_down("injection"):
         return _unavailable("injection")
     try:
-        result = injection_model.classify(text)
+        result = _run_injection_backend(text, backend)
+        detail = {
+            "score": result.get("score"),
+            "chunks_scanned": result.get("chunks_scanned"),
+            "backend": result.get("backend"),
+        }
+        for optional in ("shields_comparison", "local_skipped"):
+            if optional in result:
+                detail[optional] = result[optional]
         return {
             "type": "injection",
             "verdict": "malicious" if result["malicious"] else "clean",
             "reason_code": ["INJECTION_OVERRIDE_OR_JAILBREAK"]
             if result["malicious"]
             else None,
-            "detail": {
-                "score": result["score"],
-                "chunks_scanned": result["chunks_scanned"],
-            },
+            "detail": detail,
         }
     except Exception as e:
         logger.exception("injection classification failed")
@@ -424,11 +507,19 @@ def scan(req: ScanRequest) -> dict:
     other's output, so one detector's redaction never hides a finding
     from another.
 
-    Bodies over SCAN_FULL_MAX_BYTES are refused with 413. If any finding has
-    verdict "error", redacted_text only reflects the axes that succeeded (a
-    credential scan error leaves credentials in it, by design: the caller keeps
-    the original text), so check the verdicts before trusting it."""
-    _enforce_size(req.text, SCAN_FULL_MAX_BYTES, "SCAN_FULL_MAX_BYTES")
+    Bodies over the full-route limit are refused with 413. That limit is
+    SCAN_FULL_MAX_BYTES while the local model is the injection backend; when
+    Prompt Shields handles injection (it windows large text itself) the limit
+    rises to SCAN_FULL_SHIELDS_MAX_BYTES. If any finding has verdict "error",
+    redacted_text only reflects the axes that succeeded (a credential scan error
+    leaves credentials in it, by design: the caller keeps the original text), so
+    check the verdicts before trusting it."""
+    if prompt_shields.shields_handles_injection():
+        _enforce_size(
+            req.text, SCAN_FULL_SHIELDS_MAX_BYTES, "SCAN_FULL_SHIELDS_MAX_BYTES"
+        )
+    else:
+        _enforce_size(req.text, SCAN_FULL_MAX_BYTES, "SCAN_FULL_MAX_BYTES")
     secret_result = _scan_secrets(req.text)
     pii_result = _scan_pii(req.text)
     injection_result = _classify_injection(req.text)

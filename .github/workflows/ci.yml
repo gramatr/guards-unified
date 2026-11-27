@@ -49,6 +49,10 @@ jobs:
         # The two models are stubbed (they are gated and heavy): this pins the
         # request size limits and what a failing axis does to the response.
         run: python3 tests/api_contract_test.py
+      - name: Prompt Shields backend
+        # Windowing, parallel fan-out and the strict "nothing but an explicit
+        # clean verdict is clean" contract, with httpx stubbed (no Azure needed).
+        run: python3 tests/prompt_shields_test.py
       - name: scan.sh option tests
         # Fabricated values only; works without gitleaks installed.
         run: bash tests/scan_options_test.sh
